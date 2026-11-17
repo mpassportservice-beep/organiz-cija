@@ -1,0 +1,16 @@
+{
+  "_comment": "Coordinates for LVC road weather stations near the farm. Only needed when the live feed carries no coordinates. Match by station 'code' (as it appears in the feed) and/or by 'name' (substring of the station name). The entries below are PLACE coordinates for localities around Priekuļi where road stations are commonly sited, matched by name only - verify against the feed and add the station codes.",
+  "stations": [
+    { "name": "Priekuļi", "lat": 57.3153, "lon": 25.3620 },
+    { "name": "Cēsis", "lat": 57.3119, "lon": 25.2747 },
+    { "name": "Ieriķi", "lat": 57.2086, "lon": 25.1700 },
+    { "name": "Melturi", "lat": 57.2167, "lon": 25.2333 },
+    { "name": "Bērzkrogs", "lat": 57.2330, "lon": 25.5330 },
+    { "name": "Rauna", "lat": 57.3317, "lon": 25.6100 },
+    { "name": "Drabeši", "lat": 57.2400, "lon": 25.2800 },
+    { "name": "Stalbe", "lat": 57.3700, "lon": 25.0300 },
+    { "name": "Līgatne", "lat": 57.1900, "lon": 25.0400 },
+    { "name": "Valmiera", "lat": 57.5385, "lon": 25.4263 },
+    { "name": "Smiltene", "lat": 57.4242, "lon": 25.9015 }
+  ]
+}

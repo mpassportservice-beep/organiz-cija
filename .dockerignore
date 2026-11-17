@@ -1,0 +1,10 @@
+node_modules
+*/node_modules
+web/dist
+server/data
+preview
+docs
+*.zip
+*.sqlite*
+.env
+.git
