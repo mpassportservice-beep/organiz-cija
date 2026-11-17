@@ -5,7 +5,7 @@ import {
 } from '@spray/shared';
 import type { Ctx } from '../App';
 import { fieldCount } from '../i18n';
-import { Btn, Card, Check, downwindHits, FieldMap, inputCls, Labeled, localDateIso, STATUS_BG, StatusIcon } from '../ui';
+import { Btn, Card, Check, FieldMap, inputCls, Labeled, localDateIso, STATUS_BG, StatusIcon } from '../ui';
 
 const UNITS = ['l/ha', 'kg/ha', 'ml/ha', 'g/ha'];
 
@@ -61,9 +61,6 @@ export function Precheck({ ctx, onDone, onCancel }: { ctx: Ctx; onDone: (synced:
   const tick = (k: string) => (v: boolean) => setTicks((s) => ({ ...s, [k]: v }));
 
   const windFrom = conditions?.windDir?.value ?? null;
-  const fieldHits = selFields.map((x) => ({ field: x, hits: downwindHits(x, windFrom) })).filter((x) => x.hits.length > 0);
-  const hits = fieldHits.flatMap((x) => x.hits);
-  const mapField = fieldHits[0]?.field ?? f;
   const red = ev?.flag === 'red';
   const items = useMemo(() => [
     { id: 'bees', label: t('ckBees') }, { id: 'buffer', label: t('ckBuffer') }, { id: 'nozzle', label: t('ckNozzle') },
@@ -180,16 +177,11 @@ export function Precheck({ ctx, onDone, onCancel }: { ctx: Ctx; onDone: (synced:
       <Check checked={!!ticks.bees} onChange={tick('bees')} title={t('ckBees')} warn={p?.beeHazard}>
         {p?.beeHazard ? <strong>{t('ckBeesHaz')}</strong> : t('ckBeesSafe')}
       </Check>
-      <Check checked={!!ticks.buffer} onChange={tick('buffer')} title={t('ckBuffer')} warn={hits.length > 0}>
+      <Check checked={!!ticks.buffer} onChange={tick('buffer')} title={t('ckBuffer')}>
         <span className="flex items-center gap-3">
-          <span className="shrink-0"><FieldMap field={mapField} windFrom={windFrom} lang={lang} size={128} /></span>
+          <span className="shrink-0"><FieldMap field={null} windFrom={windFrom} lang={lang} size={128} /></span>
           <span>
             {windFrom === null ? t('windUnknown') : t('ckBufferHint', { dir: compass((windFrom + 180) % 360, lang) })}
-            {fieldHits.map(({ field: hf, hits: hh }) => (
-              <strong key={hf.id} className="mt-1 block text-stop">
-                {t('ckBufferWarn', { what: `${selFields.length > 1 ? `${hf.name}: ` : ''}${hh.map((h) => t(`${h}_` as 'water_')).join(', ')}` })}
-              </strong>
-            ))}
           </span>
         </span>
       </Check>

@@ -4,17 +4,16 @@ import { CROPS, DEFAULT_THRESHOLDS, THRESHOLD_GROUPS, type Field, type FieldGrou
 import type { Ctx } from '../App';
 import { pushCurrent, pushDisable, pushEnable, pushSupported, pushTest } from '../data';
 import { fieldCount, THRESHOLD_LABELS, type Key } from '../i18n';
-import { ago, Btn, Card, FieldMap, fmtTime, inputCls, Labeled, NumInput, SECTOR_COLORS, SectorPicker } from '../ui';
+import { ago, Btn, Card, fmtTime, inputCls, Labeled, NumInput } from '../ui';
 
 function FieldEditor({ ctx, f }: { ctx: Ctx; f: Field }) {
   const { t, lang, state, update } = ctx;
   const set = (patch: Partial<Field>) => update((s) => ({ fields: s.fields.map((x) => (x.id === f.id ? { ...x, ...patch } : x)) }));
-  const windFrom = ctx.conditions?.windDir?.value ?? null;
   return (
     <div className="space-y-3 rounded-xl border-2 border-neutral-900 p-3">
       <div className="grid grid-cols-[1fr_6.5rem] gap-2">
         <Labeled label={t('fieldName')}><input className={inputCls} value={f.name} onChange={(e) => set({ name: e.target.value })} /></Labeled>
-        <Labeled label={t('area')}><NumInput value={f.areaHa} onChange={(v) => set({ areaHa: v })} /></Labeled>
+        <Labeled label={t('area')}><NumInput value={f.areaHa} decimals={2} min={0} placeholder="0,00" onChange={(v) => set({ areaHa: v === null ? null : Math.round(v * 100) / 100 })} /></Labeled>
       </div>
       <div className="grid grid-cols-[1fr_6.5rem] gap-2">
         <Labeled label={t('crop')}>
@@ -25,14 +24,6 @@ function FieldEditor({ ctx, f }: { ctx: Ctx; f: Field }) {
         </Labeled>
         <Labeled label="BBCH"><NumInput value={f.bbch} step="1" onChange={(v) => set({ bbch: v === null ? null : Math.max(0, Math.min(99, Math.round(v))) })} /></Labeled>
       </div>
-      <p className="text-sm font-semibold">{t('sensitive')}</p>
-      <div className="flex justify-center"><FieldMap field={f} windFrom={windFrom} lang={lang} size={180} /></div>
-      {(['water', 'neighbours', 'hives'] as const).map((k) => (
-        <div key={k}>
-          <div className="mb-1 text-sm font-bold" style={{ color: SECTOR_COLORS[k] }}>{t(`${k}_` as Key)}</div>
-          <SectorPicker value={f[k]} onChange={(v) => set({ [k]: v })} lang={lang} color={SECTOR_COLORS[k]} />
-        </div>
-      ))}
       {state.fields.length > 1 && (
         <Btn kind="danger" className="w-full" onClick={() => {
           if (!DEMO && !confirm(`${t('delete')}: ${f.name}?`)) return;

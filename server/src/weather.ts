@@ -1,6 +1,6 @@
 import type { HourlyTemp, Snapshot, SourceStatus, StationObservation } from '@spray/shared';
-import { config } from './config';
 import { kvGet, kvSet, sourceFail, sourceGet, sourceOk } from './db';
+import { currentFarm, farmKey, type Farm } from './farm';
 import { fetchLvc, LVC_LABEL, type LvcParseResult } from './sources/lvc';
 import { fetchLvgmc, LVGMC_LABEL, type LvgmcResult } from './sources/lvgmc';
 import { fetchForecast, OPEN_METEO_LABEL, type ForecastResult } from './sources/openMeteo';
@@ -20,11 +20,20 @@ export function mergeHourlyTemps(model: HourlyTemp[], observed: HourlyTemp[]): H
   return out.sort((a, b) => a.t.localeCompare(b.t));
 }
 
+type Keyed<T> = T & { farmKey?: string };
+
+/** Cached payload, but only if it was fetched for this location (never show another place's weather). */
+function forFarm<T>(id: 'lvc' | 'lvgmc' | 'open-meteo', key: string) {
+  const r = sourceGet<Keyed<T>>(id);
+  return r.payload && r.payload.farmKey === key ? r : { ...r, payload: null, fetchedAt: null };
+}
+
 /** Build the snapshot purely from the cache, so a failing source degrades to its last good data. */
-export function assembleSnapshot(): Snapshot {
-  const lvc = sourceGet<LvcParseResult>('lvc');
-  const lvgmc = sourceGet<LvgmcResult>('lvgmc');
-  const om = sourceGet<ForecastResult>('open-meteo');
+export function assembleSnapshot(farm: Farm = currentFarm()): Snapshot {
+  const key = farmKey(farm);
+  const lvc = forFarm<LvcParseResult>('lvc', key);
+  const lvgmc = forFarm<LvgmcResult>('lvgmc', key);
+  const om = forFarm<ForecastResult>('open-meteo', key);
   const observations: StationObservation[] = [
     ...(lvc.payload?.observations ?? []),
     ...(lvgmc.payload?.observation ? [lvgmc.payload.observation] : []),
@@ -35,7 +44,7 @@ export function assembleSnapshot(): Snapshot {
   });
   return {
     generatedAt: new Date().toISOString(),
-    farm: config.farm,
+    farm: { name: farm.name, lat: farm.lat, lon: farm.lon, timezone: farm.timezone },
     observations,
     forecast: {
       sourceLabel: OPEN_METEO_LABEL,
@@ -51,23 +60,31 @@ export function assembleSnapshot(): Snapshot {
 }
 
 let running: Promise<Snapshot> | null = null;
+let runningKey = '';
 let lastRun = 0;
+let lastKey = '';
 
 /** Fetch all sources (independently — one failing never blocks the others), cache, and rebuild the snapshot. */
 export function refreshAll(log: (msg: string) => void = () => {}): Promise<Snapshot> {
-  if (running) return running;
+  const farm = currentFarm();
+  const key = farmKey(farm);
+  if (running && runningKey === key) return running;
+  // The location changed while a fetch for the old one was running: fetch again for the new one afterwards.
+  if (running) return running.then(() => refreshAll(log), () => refreshAll(log));
+  runningKey = key;
   running = (async () => {
     await Promise.all(SOURCES.map(async (s) => {
       try {
-        const r = await (s.run as () => Promise<any>)();
-        sourceOk(s.id, r, (s.detail as (x: any) => string)(r));
+        const r = await (s.run as (f: Farm) => Promise<any>)(farm);
+        sourceOk(s.id, { ...r, farmKey: key }, (s.detail as (x: any) => string)(r));
       } catch (e: any) {
         sourceFail(s.id, String(e?.message ?? e).slice(0, 300));
         log(`[fetch] ${s.id} failed: ${e?.message ?? e}`);
       }
     }));
     lastRun = Date.now();
-    const snap = assembleSnapshot();
+    lastKey = key;
+    const snap = assembleSnapshot(farm);
     kvSet('snapshot', snap);
     return snap;
   })().finally(() => { running = null; });
@@ -75,6 +92,9 @@ export function refreshAll(log: (msg: string) => void = () => {}): Promise<Snaps
 }
 
 export function currentSnapshot(): Snapshot {
-  return kvGet<Snapshot>('snapshot') ?? assembleSnapshot();
+  const snap = kvGet<Snapshot>('snapshot');
+  return snap && farmKey(snap.farm) === farmKey(currentFarm()) ? snap : assembleSnapshot();
 }
 export const msSinceLastRun = () => Date.now() - lastRun;
+/** True when the last fetch was for a different location than the one now chosen. */
+export const locationChanged = () => lastKey !== farmKey(currentFarm());

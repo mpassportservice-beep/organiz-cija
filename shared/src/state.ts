@@ -1,4 +1,5 @@
 import { mergeThresholds, type Thresholds } from './config';
+import { inLatvia } from './latvia';
 import type { CropSelection, Lang, Product, Reading } from './types';
 
 /** 8 compass sectors (0 = N, clockwise) in which a sensitive object lies, seen from the field. */
@@ -20,6 +21,21 @@ export interface FieldGroup {
   fieldIds: string[];
 }
 
+/** Point the weather is fetched for (forecast at the point, observations from the nearest stations). */
+export interface FarmLocation {
+  name: string;
+  lat: number;
+  lon: number;
+}
+
+export function validLocation(l: unknown): FarmLocation | null {
+  if (!l || typeof l !== 'object') return null;
+  const x = l as Partial<FarmLocation>;
+  const lat = Number(x.lat), lon = Number(x.lon);
+  if (!inLatvia(lat, lon)) return null;
+  return { name: typeof x.name === 'string' ? x.name.slice(0, 80) : '', lat: Math.round(lat * 1e5) / 1e5, lon: Math.round(lon * 1e5) / 1e5 };
+}
+
 export interface AppState {
   version: 1;
   updatedAt: string;
@@ -34,6 +50,8 @@ export interface AppState {
   selectedGroupId: string | null;
   operator: { name: string; certificate: string };
   nozzle: string;
+  /** null = the server's default farm (Priekuļi unless configured otherwise). */
+  location: FarmLocation | null;
 }
 
 export const NOZZLES = [
@@ -58,6 +76,7 @@ export function defaultState(): AppState {
     selectedGroupId: null,
     operator: { name: '', certificate: '' },
     nozzle: '',
+    location: null,
   };
 }
 
@@ -75,6 +94,7 @@ export function normalizeState(raw: unknown): AppState {
     groups: Array.isArray(s.groups) ? s.groups : [],
     selectedGroupId: typeof s.selectedGroupId === 'string' ? s.selectedGroupId : null,
     operator: { ...d.operator, ...(s.operator ?? {}) },
+    location: validLocation(s.location),
   };
 }
 

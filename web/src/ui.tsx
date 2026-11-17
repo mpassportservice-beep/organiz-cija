@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { compass, sectorOf, type Field, type Lang, type Reading, type Status } from '@spray/shared';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { compass, type Field, type Lang, type Reading, type Status } from '@spray/shared';
 import type { TFn } from './i18n';
 
 const TZ = 'Europe/Riga';
@@ -99,12 +99,32 @@ export function Labeled({ label, children, hint }: { label: string; children: Re
 }
 export const inputCls = 'block w-full min-h-12 rounded-lg border-2 border-neutral-900 bg-white px-3 py-2';
 
-export function NumInput({ value, onChange, placeholder, step = 'any', highlight }: {
-  value: number | null; onChange: (v: number | null) => void; placeholder?: string; step?: string; highlight?: boolean;
+/**
+ * Number field that takes both "2,35" and "2.35" (Latvian keyboards give a comma).
+ * Keeps what is typed while editing; `decimals` limits digits after the separator.
+ */
+export function NumInput({ value, onChange, placeholder, step = 'any', highlight, decimals, min }: {
+  value: number | null; onChange: (v: number | null) => void; placeholder?: string; step?: string; highlight?: boolean; decimals?: number; min?: number;
 }) {
+  const maxDec = decimals ?? (step === '1' ? 0 : 6);
+  // Latvian uses a decimal comma.
+  const show = (v: number | null) => (v === null ? '' : document.documentElement.lang === 'en' ? String(v) : String(v).replace('.', ','));
+  const [text, setText] = useState(show(value));
+  const focused = useRef(false);
+  useEffect(() => { if (!focused.current) setText(show(value)); }, [value]);
+  const pattern = maxDec === 0 ? /^-?\d*$/ : new RegExp(`^-?\\d*([.,]\\d{0,${maxDec}})?$`);
   return (
-    <input className={`${inputCls} ${highlight ? 'bg-amber-100' : ''}`} type="number" inputMode="decimal" step={step} placeholder={placeholder}
-      value={value ?? ''} onChange={(e) => { const v = e.target.value; onChange(v === '' || Number.isNaN(Number(v)) ? null : Number(v)); }} />
+    <input className={`${inputCls} ${highlight ? 'bg-amber-100' : ''}`} type="text" inputMode={maxDec === 0 ? 'numeric' : 'decimal'}
+      autoComplete="off" placeholder={placeholder} value={text}
+      onFocus={() => { focused.current = true; }}
+      onBlur={() => { focused.current = false; setText(show(value)); }}
+      onChange={(e) => {
+        const raw = e.target.value.replace(/\s/g, '');
+        if (!pattern.test(raw) || (min !== undefined && min >= 0 && raw.startsWith('-'))) return; // reject the keystroke
+        setText(raw);
+        const n = Number(raw.replace(',', '.'));
+        onChange(raw === '' || raw === '-' || raw === '.' || raw === ',' || !Number.isFinite(n) ? null : n);
+      }} />
   );
 }
 
@@ -152,28 +172,3 @@ export function FieldMap({ field, windFrom, lang, size = 220 }: { field: Field |
     </svg>
   );
 }
-
-/** Which marked objects lie in or next to the downwind sector. */
-export function downwindHits(field: Field | null, windFrom: number | null): ('water' | 'neighbours' | 'hives')[] {
-  if (!field || windFrom === null) return [];
-  const s = sectorOf((windFrom + 180) % 360);
-  const near = [s, (s + 1) % 8, (s + 7) % 8];
-  return (['water', 'neighbours', 'hives'] as const).filter((k) => field[k].some((x) => near.includes(x)));
-}
-
-export function SectorPicker({ value, onChange, lang, color }: { value: number[]; onChange: (v: number[]) => void; lang: Lang; color: string }) {
-  return (
-    <div className="grid grid-cols-8 gap-1">
-      {Array.from({ length: 8 }, (_, i) => {
-        const on = value.includes(i);
-        return (
-          <button key={i} type="button" aria-pressed={on} onClick={() => onChange(on ? value.filter((x) => x !== i) : [...value, i].sort())}
-            className="min-h-11 rounded-md border-2 text-sm font-bold" style={on ? { background: color, color: '#fff', borderColor: color } : { borderColor: '#0a0a0a' }}>
-            {compass(i * 45, lang)}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-export const SECTOR_COLORS = SECT;

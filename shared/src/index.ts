@@ -5,3 +5,4 @@ export * from './engine';
 export * from './resolve';
 export * from './messages';
 export * from './state';
+export * from './latvia';

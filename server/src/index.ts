@@ -6,7 +6,7 @@ import { config } from './config';
 import { kvGet, kvSet, logInsert, logList } from './db';
 import { logsToCsv, logsToPdf } from './export';
 import { notifyGreenWindow, sendTest, subscribe, unsubscribe, vapidPublicKey } from './push';
-import { currentSnapshot, msSinceLastRun, refreshAll } from './weather';
+import { currentSnapshot, locationChanged, msSinceLastRun, refreshAll } from './weather';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' }, bodyLimit: 2 * 1024 * 1024 });
 const log = (m: string) => app.log.warn(m);
@@ -21,12 +21,13 @@ async function cycle() {
 app.get('/api/health', async () => ({ ok: true, time: new Date().toISOString() }));
 app.get('/api/snapshot', async (_req, reply) => { reply.header('cache-control', 'no-store'); return currentSnapshot(); });
 /** Manual refresh. Upstream is hit at most once a minute no matter how often the button is pressed. */
-app.post('/api/refresh', async () => (msSinceLastRun() < 60_000 ? currentSnapshot() : cycle()));
+app.post('/api/refresh', async () => (msSinceLastRun() < 60_000 && !locationChanged() ? currentSnapshot() : cycle()));
 
 app.get('/api/state', async () => normalizeState(kvGet('state')));
 app.put('/api/state', async (req) => {
   const s: AppState = { ...normalizeState(req.body), updatedAt: new Date().toISOString() };
   kvSet('state', s);
+  if (locationChanged()) void cycle(); // new place: fetch its weather right away
   return s;
 });
 

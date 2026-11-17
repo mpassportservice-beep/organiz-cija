@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import PDFDocument from 'pdfkit';
 import type { Lang, LogRecord } from '@spray/shared';
-import { config } from './config';
+import { currentFarm } from './farm';
 
 const require = createRequire(import.meta.url);
 const FONT = require.resolve('dejavu-fonts-ttf/ttf/DejaVuSans.ttf');
@@ -12,7 +12,7 @@ const WEATHER_KEYS = ['temp', 'rh', 'wind', 'gust', 'windDir', 'precipNow', 'dew
 function local(iso: string | null | undefined): { date: string; time: string } {
   if (!iso) return { date: '', time: '' };
   const d = new Date(iso);
-  const f = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('lv-LV', { timeZone: config.farm.timezone, ...o }).format(d);
+  const f = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('lv-LV', { timeZone: 'Europe/Riga', ...o }).format(d);
   return { date: f({ year: 'numeric', month: '2-digit', day: '2-digit' }), time: f({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) };
 }
 
@@ -81,7 +81,7 @@ export function logsToPdf(records: LogRecord[], lang: Lang): Promise<Buffer> {
     const W = doc.page.width - 80;
     const g = local(new Date().toISOString());
     doc.font('b').fontSize(15).text(t.title);
-    doc.font('r').fontSize(9).fillColor('#444').text(`${config.farm.name} · ${t.generated}: ${g.date} ${g.time}`).fillColor('#000').moveDown(0.8);
+    doc.font('r').fontSize(9).fillColor('#444').text(`${currentFarm().name} · ${t.generated}: ${g.date} ${g.time}`).fillColor('#000').moveDown(0.8);
     if (!records.length) doc.fontSize(11).text(t.none);
 
     const kv = (label: string, value: unknown) => {

@@ -191,7 +191,7 @@ export function Main({ ctx, onStart }: { ctx: Ctx; onStart: () => void }) {
       {!offline && snapshot && ageMin > 25 && <div className="rounded-lg bg-neutral-950 px-3 py-2 text-sm font-bold text-white">⚠ {t('oldData', { min: ageMin })}</div>}
 
       {!snapshot || !ev ? (
-        <div className="rounded-2xl border-2 border-neutral-900 p-6 text-center text-lg font-bold">{busy ? t('loading') : t('noDataYet')}</div>
+        <div className="rounded-2xl border-2 border-neutral-900 p-6 text-center text-lg font-bold">{ctx.locPending ? t('locLoading') : busy ? t('loading') : t('noDataYet')}</div>
       ) : (
         <>
           <div className={`rounded-2xl px-4 py-4 ${STATUS_BG[ev.flag]}`} role="status" aria-live="polite">

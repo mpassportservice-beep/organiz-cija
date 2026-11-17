@@ -1,6 +1,6 @@
 # Smidzināšanas logs (Spray Window)
 
-Mobile-first PWA for farmers near Priekuļi, Latvia (57.315 N, 25.355 E). One job: show **right now** whether
+Mobile-first PWA for farmers in Latvia (default location Priekuļi, 57.315 N, 25.355 E; any point in Latvia can be chosen). One job: show **right now** whether
 conditions suit pesticide spraying — a GREEN "Var smidzināt" / AMBER "Uzmanīgi" / RED "Nesmidzināt" flag with
 the reason, a 10-row checklist, and the best window in the next 12 hours.
 
@@ -80,6 +80,15 @@ The browser never calls a weather API. It only talks to `/api/*` on this server.
 
 Every value on screen carries source, station, distance from the farm and timestamp.
 
+**Location:** tap the pin next to the place name in the header to choose any point in Latvia on a map (OpenStreetMap
+tiles, loaded by the browser), or use the phone's GPS. Points outside Latvia are refused (Natural Earth 1:10m
+border in `shared/src/latvia.ts`, 3 km tolerance for coast and border fields). The point is saved in the shared
+settings; the server then fetches the Open-Meteo forecast for that exact point, and LVĢMC / LVC observations from
+the stations nearest to it. Cached data is tagged with the coordinates it was fetched for, so another place's weather
+is never shown — until the new place's data arrives the app says it is loading. "Noklusējums" goes back to the
+configured farm (`FARM_LAT`/`FARM_LON`, Priekuļi by default). In remote parts of Latvia the nearest station that
+measures wind can be 40–50 km away; its distance is shown on every row.
+
 ### 1a. LVC road weather stations — primary observations
 
 - **Fetch:** CKAN REST on data.gov.lv. `package_show?id=aktualie-celu-meteorologisko-staciju-dati` to find the
@@ -102,7 +111,9 @@ Every value on screen carries source, station, distance from the farm and timest
 ### 1b. LVĢMC operational data — reference station (verified live)
 
 - **Fetch:** `datastore_search` on resource `17460efb-…` ("Meteoroloģiskie operatīvie dati") filtered to the
-  station nearest the farm, found from the stations resource `c32c7afd-…` → **Priekuļi, RIPR99PA, 1 km**.
+  station nearest the chosen location, found from the stations resource `c32c7afd-…` (default farm →
+  **Priekuļi, RIPR99PA, 1 km**). Only ~25 of the 34 stations measure temperature and wind (the rest are
+  precipitation posts), so the nearest 4 are tried in order and the first with current temperature and wind wins.
 - **Used for:** `TDRY` temperature, `RLH` humidity, `WNS10` 10-min mean wind, `WPGST` gusts, `WNDD10` direction,
   `HPRAB` hourly precipitation, and `HATMN` hourly minimum temperature for the frost check.
   Timestamps are UTC.
@@ -199,7 +210,7 @@ and kept in the database.
 
 - LVC live feed untested (see above).
 - No authentication, single farm, single set of settings shared by all devices.
-- The field map is a schematic compass (you mark in which directions water, neighbours and apiaries lie), not a
-  real map with parcel outlines.
+- The buffer-zone check shows only the wind direction on a compass; sensitive objects around fields are not marked
+  in the app (removed on request) – check them on site.
 - Log records cannot be edited or deleted in the UI (deliberate for a register; end time is not captured).
 - The bee reminder is generic text; it does not encode specific legal hours or distances.

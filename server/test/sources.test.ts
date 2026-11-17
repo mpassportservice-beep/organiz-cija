@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseTime } from '../src/http';
 import { mapColumns, parseLvcRecords } from '../src/sources/lvc';
-import { nearestStation, parseObservations, parseStations } from '../src/sources/lvgmc';
+import { nearestStation, parseObservations, parseStations, stationsByDistance } from '../src/sources/lvgmc';
+import { sourceOk } from '../src/db';
+import { assembleSnapshot } from '../src/weather';
+import { buildUrl } from '../src/sources/openMeteo';
 import { parseForecast } from '../src/sources/openMeteo';
 import { mergeHourlyTemps } from '../src/weather';
 import { logsToCsv } from '../src/export';
@@ -146,5 +149,24 @@ describe('CSV export', () => {
     expect(head).toContain('Smidzināts kopā ar');
     expect(a).toContain(';Grupa A – L2, L3;');
     expect(b).not.toContain('Grupa');
+  });
+});
+
+describe('chosen location', () => {
+  it('ranks LVĢMC stations by distance from any point', () => {
+    const stations = parseStations(fx('lvgmc-stations.json').result.records);
+    const near = stationsByDistance(stations, 56.51, 21.01).slice(0, 2).map((s) => s.name); // Liepāja
+    expect(near[0]).toMatch(/Liepāja/);
+    expect(stationsByDistance(stations, 57.315, 25.355)[0].id).toBe('RIPR99PA');
+  });
+  it('forecast is requested for the point itself', () => {
+    expect(buildUrl({ lat: 56.95, lon: 24.1 })).toContain('latitude=56.95&longitude=24.1');
+  });
+  it('never shows weather cached for another place', () => {
+    sourceOk('open-meteo', { slots: [{ t: 'x' }], hourlyTemps: [], sunrise: [], sunset: [], models: ['M'], farmKey: '57.3150,25.3550' }, 'M');
+    const farm = { name: 'Rīga', lat: 56.95, lon: 24.1, timezone: 'Europe/Riga' };
+    expect(assembleSnapshot(farm).forecast.slots).toEqual([]);
+    expect(assembleSnapshot(farm).farm.name).toBe('Rīga');
+    expect(assembleSnapshot({ ...farm, lat: 57.315, lon: 25.355 }).forecast.slots).toHaveLength(1);
   });
 });

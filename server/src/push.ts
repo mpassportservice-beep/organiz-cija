@@ -30,7 +30,7 @@ async function send(row: { endpoint: string; sub: string }, payload: object): Pr
   }
 }
 
-const hhmm = (iso: string) => new Intl.DateTimeFormat('lv-LV', { timeZone: config.farm.timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
+const hhmm = (iso: string) => new Intl.DateTimeFormat('lv-LV', { timeZone: 'Europe/Riga', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
 
 export function windowMessage(start: string, end: string, lang: Lang) {
   return lang === 'lv'

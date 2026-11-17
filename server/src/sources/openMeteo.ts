@@ -18,9 +18,9 @@ export interface ForecastResult {
 
 const VARS = 'temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,wind_speed_10m,wind_gusts_10m,wind_direction_10m';
 
-export function buildUrl(): string {
+export function buildUrl(farm: { lat: number; lon: number } = config.farm): string {
   const p = new URLSearchParams({
-    latitude: String(config.farm.lat), longitude: String(config.farm.lon),
+    latitude: String(farm.lat), longitude: String(farm.lon),
     minutely_15: VARS, hourly: `temperature_2m,precipitation_probability,cloud_cover`,
     daily: 'sunrise,sunset', models: MODELS.map((m) => m.id).join(','),
     wind_speed_unit: 'ms', timeformat: 'unixtime', timezone: 'UTC',
@@ -95,8 +95,8 @@ export function parseForecast(j: any): ForecastResult {
   };
 }
 
-export async function fetchForecast(): Promise<ForecastResult> {
-  const j = await getJson(buildUrl());
+export async function fetchForecast(farm: { lat: number; lon: number } = config.farm): Promise<ForecastResult> {
+  const j = await getJson(buildUrl(farm));
   if (j.error) throw new Error(j.reason ?? 'Open-Meteo error');
   return parseForecast(j);
 }

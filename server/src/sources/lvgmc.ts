@@ -72,22 +72,49 @@ export function parseObservations(records: any[], station: LvgmcStation, farm: {
 
 let stationCache: { at: number; stations: LvgmcStation[] } | null = null;
 
-export async function fetchLvgmc(): Promise<LvgmcResult> {
-  let station: LvgmcStation | null = null;
+/** Stations sorted by distance from the point. */
+export function stationsByDistance(stations: LvgmcStation[], lat: number, lon: number): LvgmcStation[] {
+  return [...stations].sort((a, b) => haversineKm(lat, lon, a.lat, a.lon) - haversineKm(lat, lon, b.lat, b.lon));
+}
+
+/** Only about 25 of the 34 stations measure temperature and wind; the rest are precipitation posts. */
+const hasCore = (r: LvgmcResult, now: number) => {
+  const o = r.observation;
+  return !!o && o.values.temp != null && o.values.wind != null && now - Date.parse(o.time) < 3 * 3600_000;
+};
+
+const MAX_TRIES = 4;
+
+/**
+ * Observations from the nearest LVĢMC station that currently reports temperature and wind.
+ * Tries the nearest few stations in order; precipitation-only posts are skipped.
+ */
+export async function fetchLvgmc(farm: { lat: number; lon: number } = config.farm): Promise<LvgmcResult> {
+  let candidates: LvgmcStation[] = [];
   try {
     if (!stationCache || Date.now() - stationCache.at > 24 * 3600_000) {
       const j = await getJson(`${config.ckanBase}/datastore_search?resource_id=${config.lvgmc.stationsResource}&limit=500`);
       stationCache = { at: Date.now(), stations: parseStations(j.result.records) };
     }
-    station = config.lvgmc.stationId
-      ? stationCache.stations.find((s) => s.id === config.lvgmc.stationId) ?? null
-      : nearestStation(stationCache.stations, config.farm.lat, config.farm.lon);
+    const fixed = farm === config.farm && config.lvgmc.stationId
+      ? stationCache.stations.find((s) => s.id === config.lvgmc.stationId) : undefined;
+    candidates = fixed ? [fixed] : stationsByDistance(stationCache.stations, farm.lat, farm.lon).slice(0, MAX_TRIES);
   } catch { /* station list is optional */ }
-  station ??= config.lvgmc.stationId && config.lvgmc.stationId !== FALLBACK_STATION.id
-    ? { id: config.lvgmc.stationId, name: config.lvgmc.stationId, lat: NaN, lon: NaN }
-    : FALLBACK_STATION;
-  const filters = encodeURIComponent(JSON.stringify({ STATION_ID: station.id }));
-  const j = await getJson(`${config.ckanBase}/datastore_search?resource_id=${config.lvgmc.dataResource}&filters=${filters}&sort=${encodeURIComponent('DATETIME desc')}&limit=900`);
-  if (!j.success) throw new Error(j.error?.message ?? 'CKAN error');
-  return parseObservations(j.result.records, station, config.farm);
+  if (!candidates.length) {
+    candidates = [config.lvgmc.stationId && config.lvgmc.stationId !== FALLBACK_STATION.id
+      ? { id: config.lvgmc.stationId, name: config.lvgmc.stationId, lat: NaN, lon: NaN }
+      : FALLBACK_STATION];
+  }
+  let first: LvgmcResult | null = null;
+  const now = Date.now();
+  for (const station of candidates) {
+    const filters = encodeURIComponent(JSON.stringify({ STATION_ID: station.id }));
+    const j = await getJson(`${config.ckanBase}/datastore_search?resource_id=${config.lvgmc.dataResource}&filters=${filters}&sort=${encodeURIComponent('DATETIME desc')}&limit=900`);
+    if (!j.success) throw new Error(j.error?.message ?? 'CKAN error');
+    const r = parseObservations(j.result.records, station, farm);
+    if (hasCore(r, now)) return r;
+    first ??= r.observation ? r : null;
+  }
+  if (first) return first;
+  throw new Error(`No current observations from the ${candidates.length} nearest stations`);
 }

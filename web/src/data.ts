@@ -79,6 +79,23 @@ export function useAppState() {
     return () => window.removeEventListener('online', retry);
   }, [push]);
 
+  const latest = useRef(state);
+  latest.current = state;
+
+  /** Save immediately (not debounced) and wait for the server – used when the weather depends on the change. */
+  const saveNow = useCallback(async (patch: Partial<AppState>): Promise<boolean> => {
+    if (timer.current) clearTimeout(timer.current);
+    const next = { ...latest.current, ...patch, updatedAt: new Date().toISOString() };
+    latest.current = next;
+    write(LS.state, next);
+    setState(next);
+    try {
+      await api('/api/state', { method: 'PUT', body: JSON.stringify(next) });
+      localStorage.removeItem(LS.dirty);
+      return true;
+    } catch { write(LS.dirty, true); return false; }
+  }, []);
+
   const update = useCallback((patch: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => {
     setState((prev) => {
       const next = { ...prev, ...(typeof patch === 'function' ? patch(prev) : patch), updatedAt: new Date().toISOString() };
@@ -90,7 +107,7 @@ export function useAppState() {
     });
   }, [push]);
 
-  return { state, update };
+  return { state, update, saveNow };
 }
 
 /** Spraying log: records made without signal are queued on the phone and sent later. */

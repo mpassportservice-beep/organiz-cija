@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   bestWindow, buildTimeline, conditionsNow, evaluate, ruleContext,
-  type AppState, type Conditions, type Evaluation, type Lang, type LogRecord, type Snapshot, type TimelineSlot, type Window,
+  type AppState, type Conditions, type FarmLocation, type Evaluation, type Lang, type LogRecord, type Snapshot, type TimelineSlot, type Window,
 } from '@spray/shared';
 import { useAppState, useLogs, useNow, useSnapshot } from './data';
 import { DEMO, getScenario, RECORDED_AT, setScenario, type Scenario } from './demo';
@@ -12,11 +12,12 @@ import { Main } from './screens/Main';
 import { Precheck } from './screens/Precheck';
 import { Products } from './screens/Products';
 import { Settings } from './screens/Settings';
+import { LocationPicker } from './screens/Location';
 
 export interface Ctx {
   lang: Lang; t: TFn; now: number;
   state: AppState; update: ReturnType<typeof useAppState>['update'];
-  snapshot: Snapshot | null; offline: boolean; busy: boolean; refresh: () => void;
+  snapshot: Snapshot | null; offline: boolean; busy: boolean; refresh: () => void; locPending: boolean;
   rule: ReturnType<typeof ruleContext>;
   conditions: Conditions | null; evaluation: Evaluation | null; timeline: TimelineSlot[]; best: Window | null;
   logs: LogRecord[]; pendingLogs: Set<string>; addLog: (r: LogRecord | LogRecord[]) => Promise<boolean>;
@@ -25,7 +26,8 @@ export interface Ctx {
 type Tab = 'now' | 'products' | 'log' | 'settings' | 'precheck';
 
 export function App() {
-  const { state, update } = useAppState();
+  const { state, update, saveNow } = useAppState();
+  const [locOpen, setLocOpen] = useState(false);
   const { snapshot, offline, busy, refresh } = useSnapshot();
   const { logs, pending, add } = useLogs();
   const now = useNow();
@@ -58,7 +60,18 @@ export function App() {
     return { rule, conditions, evaluation: evaluate(conditions, rule.thresholds, rule.product, rule.crop), timeline, best: bestWindow(timeline) };
   }, [snapshot, now, baseRule]);
 
-  const ctx: Ctx = { lang, t, now, state, update, snapshot, offline, busy, refresh, ...derived, logs, pendingLogs: pending, addLog: add };
+  const placeName = state.location
+    ? state.location.name || `${state.location.lat.toFixed(3)}, ${state.location.lon.toFixed(3)}`
+    : snapshot?.farm.name ?? 'Priekuļi';
+  // The server answers for the new place within seconds; until then the old place's data must not be used.
+  const locPending = !!snapshot && !!state.location && (Math.abs(snapshot.farm.lat - state.location.lat) > 1e-4 || Math.abs(snapshot.farm.lon - state.location.lon) > 1e-4);
+  const saveLocation = async (loc: FarmLocation | null) => {
+    setLocOpen(false);
+    await saveNow({ location: loc });
+    refresh();
+  };
+
+  const ctx: Ctx = { lang, t, now, state, update, snapshot: locPending ? null : snapshot, offline, busy: busy || locPending, refresh, locPending, ...derived, logs, pendingLogs: pending, addLog: add };
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: 'now', label: t('tabNow'), icon: '◉' }, { id: 'products', label: t('tabProducts'), icon: '⚗' },
     { id: 'log', label: t('tabLog'), icon: '☰' }, { id: 'settings', label: t('tabSettings'), icon: '⚙' },
@@ -67,7 +80,14 @@ export function App() {
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col">
       <header className="safe-t flex items-center justify-between px-3 py-2">
-        <div className="text-base font-black tracking-tight">{t('appName')} <span className="font-semibold text-neutral-600">· {snapshot?.farm.name ?? 'Priekuļi'}</span></div>
+        <div className="flex min-w-0 items-center gap-1 text-base font-black tracking-tight">
+          <span className="shrink-0">{t('appName')}</span>
+          <button onClick={() => setLocOpen(true)} aria-label={`${t('locTitle')}: ${placeName}`}
+            className="flex min-h-11 min-w-0 items-center gap-1 rounded-lg px-1.5 font-bold text-neutral-800 underline decoration-dotted underline-offset-4">
+            <svg width="16" height="21" viewBox="0 0 36 48" className="shrink-0" aria-hidden><path d="M18 1C8.6 1 1 8.4 1 17.6 1 30 18 47 18 47s17-17 17-29.4C35 8.4 27.4 1 18 1z" fill="#b91c1c" stroke="#0a0a0a" strokeWidth="3"/><circle cx="18" cy="17.5" r="6.5" fill="#fff"/></svg>
+            <span className="truncate">{placeName}</span>
+          </button>
+        </div>
         <button className="min-h-11 min-w-14 rounded-lg border-2 border-neutral-900 px-2 text-sm font-black" onClick={() => update({ lang: lang === 'lv' ? 'en' : 'lv' })}
           aria-label={lang === 'lv' ? 'Switch to English' : 'Pārslēgt uz latviešu valodu'}>
           {lang === 'lv' ? 'EN' : 'LV'}
@@ -97,6 +117,7 @@ export function App() {
         {tab === 'log' && <Log ctx={ctx} />}
         {tab === 'settings' && <Settings ctx={ctx} />}
       </main>
+      {locOpen && <LocationPicker ctx={ctx} onClose={() => setLocOpen(false)} onSave={(l) => void saveLocation(l)} />}
       {toast && <div className="fixed inset-x-3 bottom-24 z-40 mx-auto max-w-md rounded-xl bg-neutral-950 px-4 py-3 text-center font-bold text-white" role="status">{toast}</div>}
       <nav className="safe-b sticky bottom-0 z-20 grid grid-cols-4 border-t-2 border-neutral-900 bg-white">
         {tabs.map((x) => {

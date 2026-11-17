@@ -132,7 +132,7 @@ async function resourceIds(headers: Record<string, string>): Promise<string[]> {
   return ids;
 }
 
-export async function fetchLvc(): Promise<LvcParseResult> {
+export async function fetchLvc(farm: { lat: number; lon: number } = config.farm): Promise<LvcParseResult> {
   const headers: Record<string, string> = config.lvc.apiKey ? { Authorization: config.lvc.apiKey } : {};
   let ids: string[];
   try {
@@ -145,7 +145,7 @@ export async function fetchLvc(): Promise<LvcParseResult> {
   for (const id of ids) {
     const j = await getJson(`${config.ckanBase}/datastore_search?resource_id=${id}&limit=3000`, headers);
     const fields = (j.result.fields ?? []).map((f: any) => String(f.id)).filter((f: string) => f !== '_id');
-    const r = parseLvcRecords(fields, j.result.records ?? [], registry, config.farm, {
+    const r = parseLvcRecords(fields, j.result.records ?? [], registry, farm, {
       maxStations: config.lvc.maxStations, maxKm: config.lvc.maxKm, timezone: config.lvc.timezone,
     });
     if (r.observations.length > best.observations.length || !best.observations.length) best = r;
