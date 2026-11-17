@@ -28,6 +28,7 @@ export function Log({ ctx }: { ctx: Ctx }) {
           </button>
           {open === r.id && (
             <div className="space-y-2 border-t-2 border-neutral-900 p-3 text-sm">
+              {r.recordedBy && <div><strong>{t('recordedBy')}:</strong> {r.recordedBy.name || r.recordedBy.email}</div>}
               <div><strong>{t('operator')}:</strong> {r.operator.name || '—'}{r.operator.certificate ? ` · ${r.operator.certificate}` : ''}</div>
               {r.nozzle && <div><strong>{t('nozzle')}:</strong> {r.nozzle}</div>}
               {r.purpose && <div><strong>{t('purpose')}:</strong> {r.purpose}</div>}

@@ -1,10 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { App } from './App';
+import { Root } from './session';
 import { DEMO } from './demo';
 import './index.css';
 
-createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
+createRoot(document.getElementById('root')!).render(<StrictMode><Root /></StrictMode>);
 
 if ('serviceWorker' in navigator && import.meta.env.PROD && !DEMO) {
   window.addEventListener('load', async () => {

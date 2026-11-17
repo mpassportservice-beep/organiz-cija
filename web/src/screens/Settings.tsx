@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { DEMO } from '../demo';
 import { CROPS, DEFAULT_THRESHOLDS, THRESHOLD_GROUPS, type Field, type FieldGroup, type Thresholds } from '@spray/shared';
 import type { Ctx } from '../App';
+import { AccountCard, FarmCard } from './Farm';
 import { pushCurrent, pushDisable, pushEnable, pushSupported, pushTest } from '../data';
 import { fieldCount, THRESHOLD_LABELS, type Key } from '../i18n';
 import { ago, Btn, Card, fmtTime, inputCls, Labeled, NumInput } from '../ui';
@@ -112,10 +113,12 @@ export function Settings({ ctx }: { ctx: Ctx }) {
     <div className="space-y-3 px-3 pb-6">
       <h1 className="text-2xl font-black">{t('tabSettings')}</h1>
 
+      <FarmCard ctx={ctx} />
+
       <Card title={t('language')}>
         <div className="grid grid-cols-2 gap-2">
           {(['lv', 'en'] as const).map((l) => (
-            <Btn key={l} kind={lang === l ? 'primary' : 'ghost'} onClick={() => update({ lang: l })}>{l === 'lv' ? 'Latviešu' : 'English'}</Btn>
+            <Btn key={l} kind={lang === l ? 'primary' : 'ghost'} onClick={() => ctx.session.setLang(l)}>{l === 'lv' ? 'Latviešu' : 'English'}</Btn>
           ))}
         </div>
       </Card>
@@ -206,6 +209,7 @@ export function Settings({ ctx }: { ctx: Ctx }) {
           </ul>
         )}
       </Card>
+      <AccountCard ctx={ctx} />
     </div>
   );
 }

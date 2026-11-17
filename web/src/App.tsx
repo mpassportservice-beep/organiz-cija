@@ -13,10 +13,12 @@ import { Precheck } from './screens/Precheck';
 import { Products } from './screens/Products';
 import { Settings } from './screens/Settings';
 import { LocationPicker } from './screens/Location';
+import type { Session } from './session';
 
 export interface Ctx {
   lang: Lang; t: TFn; now: number;
   state: AppState; update: ReturnType<typeof useAppState>['update'];
+  session: Session;
   snapshot: Snapshot | null; offline: boolean; busy: boolean; refresh: () => void; locPending: boolean;
   rule: ReturnType<typeof ruleContext>;
   conditions: Conditions | null; evaluation: Evaluation | null; timeline: TimelineSlot[]; best: Window | null;
@@ -25,7 +27,7 @@ export interface Ctx {
 
 type Tab = 'now' | 'products' | 'log' | 'settings' | 'precheck';
 
-export function App() {
+export function App({ session }: { session: Session }) {
   const { state, update, saveNow } = useAppState();
   const [locOpen, setLocOpen] = useState(false);
   const { snapshot, offline, busy, refresh } = useSnapshot();
@@ -34,7 +36,7 @@ export function App() {
   const [tab, setTab] = useState<Tab>('now');
   const [toast, setToast] = useState('');
   const [scen, setScen] = useState<Scenario>(getScenario());
-  const lang = state.lang;
+  const lang = session.lang;
   const t = useMemo(() => makeT(lang), [lang]);
   const baseRule = useMemo(() => ruleContext(state), [state]);
 
@@ -71,7 +73,7 @@ export function App() {
     refresh();
   };
 
-  const ctx: Ctx = { lang, t, now, state, update, snapshot: locPending ? null : snapshot, offline, busy: busy || locPending, refresh, locPending, ...derived, logs, pendingLogs: pending, addLog: add };
+  const ctx: Ctx = { session, lang, t, now, state, update, snapshot: locPending ? null : snapshot, offline, busy: busy || locPending, refresh, locPending, ...derived, logs, pendingLogs: pending, addLog: add };
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: 'now', label: t('tabNow'), icon: '◉' }, { id: 'products', label: t('tabProducts'), icon: '⚗' },
     { id: 'log', label: t('tabLog'), icon: '☰' }, { id: 'settings', label: t('tabSettings'), icon: '⚙' },
@@ -88,7 +90,7 @@ export function App() {
             <span className="truncate">{placeName}</span>
           </button>
         </div>
-        <button className="min-h-11 min-w-14 rounded-lg border-2 border-neutral-900 px-2 text-sm font-black" onClick={() => update({ lang: lang === 'lv' ? 'en' : 'lv' })}
+        <button className="min-h-11 min-w-14 rounded-lg border-2 border-neutral-900 px-2 text-sm font-black" onClick={() => session.setLang(lang === 'lv' ? 'en' : 'lv')}
           aria-label={lang === 'lv' ? 'Switch to English' : 'Pārslēgt uz latviešu valodu'}>
           {lang === 'lv' ? 'EN' : 'LV'}
         </button>

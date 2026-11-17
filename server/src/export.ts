@@ -1,7 +1,6 @@
 import { createRequire } from 'node:module';
 import PDFDocument from 'pdfkit';
 import type { Lang, LogRecord } from '@spray/shared';
-import { currentFarm } from './farm';
 
 const require = createRequire(import.meta.url);
 const FONT = require.resolve('dejavu-fonts-ttf/ttf/DejaVuSans.ttf');
@@ -21,14 +20,14 @@ const T = {
     title: 'Augu aizsardzības līdzekļu lietošanas uzskaite', date: 'Datums', start: 'Sākums', end: 'Beigas', field: 'Lauks', area: 'Platība, ha',
     crop: 'Kultūraugs', bbch: 'BBCH', product: 'AAL nosaukums', reg: 'Reģ. Nr.', dose: 'Deva', unit: 'Devas mērv.', water: 'Darba šķidrums, l/ha',
     purpose: 'Kaitīgais organisms / mērķis', bee: 'Bīstams bitēm', phi: 'Nogaidīšanas laiks, d', harvest: 'Agrākā raža', operator: 'Operators',
-    cert: 'Apliecības Nr.', nozzle: 'Sprauslas', flag: 'Karogs', reason: 'Iemesls', prechecks: 'Pārbaudes', notes: 'Piezīmes', batch: 'Smidzināts kopā ar', weather: 'Laikapstākļi sākumā',
+    cert: 'Apliecības Nr.', nozzle: 'Sprauslas', flag: 'Karogs', reason: 'Iemesls', prechecks: 'Pārbaudes', notes: 'Piezīmes', batch: 'Smidzināts kopā ar', by: 'Ierakstīja', weather: 'Laikapstākļi sākumā',
     yes: 'Jā', no: 'Nē', generated: 'Sagatavots', value: 'vērtība', source: 'avots', station: 'stacija', km: 'km', at: 'laiks', kind: 'veids', none: 'Nav ierakstu',
   },
   en: {
     title: 'Plant protection product usage record', date: 'Date', start: 'Start', end: 'End', field: 'Field', area: 'Area, ha',
     crop: 'Crop', bbch: 'BBCH', product: 'Product', reg: 'Reg. no.', dose: 'Dose', unit: 'Dose unit', water: 'Spray volume, l/ha',
     purpose: 'Target organism / purpose', bee: 'Bee-hazardous', phi: 'Pre-harvest interval, d', harvest: 'Earliest harvest', operator: 'Operator',
-    cert: 'Certificate no.', nozzle: 'Nozzles', flag: 'Flag', reason: 'Reason', prechecks: 'Pre-checks', notes: 'Notes', batch: 'Sprayed together with', weather: 'Weather at start',
+    cert: 'Certificate no.', nozzle: 'Nozzles', flag: 'Flag', reason: 'Reason', prechecks: 'Pre-checks', notes: 'Notes', batch: 'Sprayed together with', by: 'Recorded by', weather: 'Weather at start',
     yes: 'Yes', no: 'No', generated: 'Generated', value: 'value', source: 'source', station: 'station', km: 'km', at: 'time', kind: 'kind', none: 'No records',
   },
 } as const;
@@ -50,7 +49,7 @@ function csvCell(v: unknown): string {
 export function logsToCsv(records: LogRecord[], lang: Lang): string {
   const t = T[lang];
   const head: string[] = [t.date, t.start, t.end, t.field, t.area, t.crop, t.bbch, t.product, t.reg, t.dose, t.unit, t.water, t.purpose,
-    t.bee, t.phi, t.harvest, t.operator, t.cert, t.nozzle, t.flag, t.reason, t.prechecks, t.notes, t.batch];
+    t.bee, t.phi, t.harvest, t.operator, t.cert, t.nozzle, t.flag, t.reason, t.prechecks, t.notes, t.batch, t.by];
   for (const k of WEATHER_KEYS) head.push(`${k} ${t.value}`, `${k} ${t.source}`, `${k} ${t.station}`, `${k} ${t.km}`, `${k} ${t.at}`, `${k} ${t.kind}`);
   head.push('id', 'started_at_utc');
   const rows = records.map((r) => {
@@ -58,7 +57,7 @@ export function logsToCsv(records: LogRecord[], lang: Lang): string {
     const row: unknown[] = [s.date, s.time, local(r.endedAt).time, r.field.name, r.field.areaHa, r.crop.name, r.crop.bbch, r.product.name,
       r.product.regNumber, r.dose, r.doseUnit, r.waterLHa, r.purpose, r.product.beeHazard ? t.yes : t.no, r.product.phiDays, r.earliestHarvest,
       r.operator.name, r.operator.certificate, r.nozzle, r.flag, r.flagReason,
-      r.prechecks.map((p) => `${p.checked ? '[x]' : '[ ]'} ${p.label}`).join(' | '), r.notes, batchText(r)];
+      r.prechecks.map((p) => `${p.checked ? '[x]' : '[ ]'} ${p.label}`).join(' | '), r.notes, batchText(r), r.recordedBy ? r.recordedBy.name || r.recordedBy.email : ''];
     for (const k of WEATHER_KEYS) {
       const w = r.weather.find((x) => x.key === k);
       row.push(w ? `${w.value}${w.unit ? ' ' + w.unit : ''}` : '', w?.source, w?.station, w?.distanceKm, w ? `${local(w.time).date} ${local(w.time).time}` : '', w?.kind);
@@ -69,7 +68,7 @@ export function logsToCsv(records: LogRecord[], lang: Lang): string {
   return '﻿' + [head.map(csvCell).join(';'), ...rows].join('\r\n') + '\r\n';
 }
 
-export function logsToPdf(records: LogRecord[], lang: Lang): Promise<Buffer> {
+export function logsToPdf(records: LogRecord[], lang: Lang, farmName = ''): Promise<Buffer> {
   const t = T[lang];
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 40, info: { Title: t.title } });
@@ -81,7 +80,7 @@ export function logsToPdf(records: LogRecord[], lang: Lang): Promise<Buffer> {
     const W = doc.page.width - 80;
     const g = local(new Date().toISOString());
     doc.font('b').fontSize(15).text(t.title);
-    doc.font('r').fontSize(9).fillColor('#444').text(`${currentFarm().name} · ${t.generated}: ${g.date} ${g.time}`).fillColor('#000').moveDown(0.8);
+    doc.font('r').fontSize(9).fillColor('#444').text(`${farmName ? farmName + ' · ' : ''}${t.generated}: ${g.date} ${g.time}`).fillColor('#000').moveDown(0.8);
     if (!records.length) doc.fontSize(11).text(t.none);
 
     const kv = (label: string, value: unknown) => {
@@ -101,6 +100,7 @@ export function logsToPdf(records: LogRecord[], lang: Lang): Promise<Buffer> {
       kv(t.dose, `${r.dose} ${r.doseUnit}${r.waterLHa ? ` · ${t.water}: ${r.waterLHa}` : ''}`);
       kv(t.purpose, r.purpose);
       if (r.batch && r.batch.fields.length > 1) kv(t.batch, batchText(r));
+      if (r.recordedBy) kv(t.by, r.recordedBy.name ? `${r.recordedBy.name} (${r.recordedBy.email})` : r.recordedBy.email);
       kv(t.bee, r.product.beeHazard ? t.yes : t.no);
       kv(t.phi, r.product.phiDays !== null ? `${r.product.phiDays}${r.earliestHarvest ? ` → ${t.harvest}: ${r.earliestHarvest}` : ''}` : null);
       kv(t.operator, `${r.operator.name}${r.operator.certificate ? ` · ${t.cert} ${r.operator.certificate}` : ''}`);

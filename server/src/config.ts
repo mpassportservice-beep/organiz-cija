@@ -37,5 +37,17 @@ export const config = {
   },
   openMeteoBase: process.env.OPEN_METEO_BASE ?? 'https://api.open-meteo.com/v1/forecast',
   vapidSubject: process.env.VAPID_SUBJECT ?? 'mailto:admin@example.com',
+  /** E-mail of the account that receives the data saved before sign-in existed. */
+  ownerEmail: process.env.OWNER_EMAIL ?? '',
+  /** Behind Render / a reverse proxy: trust X-Forwarded-Proto so session cookies are marked Secure. */
+  trustProxy: (process.env.TRUST_PROXY ?? '1') !== '0',
+  auth: {
+    /** Google Cloud Console → Credentials → OAuth client ID (type "Web application"). */
+    googleClientId: process.env.GOOGLE_CLIENT_ID ?? '',
+    /** Apple Developer → Identifiers → Services ID (e.g. lv.example.spray.web). */
+    appleClientId: process.env.APPLE_CLIENT_ID ?? '',
+    /** Local testing only: sign in with any e-mail, no provider. Never set this on a public server. */
+    devLogin: process.env.DEV_LOGIN === '1' && process.env.NODE_ENV !== 'production',
+  },
 };
 export type Config = typeof config;

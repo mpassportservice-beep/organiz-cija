@@ -156,4 +156,6 @@ export interface LogRecord {
   notes: string;
   /** Records made in one pass over several fields share a batch id and list all fields of the pass. */
   batch?: { id: string; group: string | null; fields: string[] } | null;
+  /** Set by the server from the signed-in account. */
+  recordedBy?: { name: string; email: string };
 }

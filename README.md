@@ -51,9 +51,42 @@ wipes the log.
   then put Caddy or nginx with a certificate in front.
 - **Without Docker:** Node ≥ 22.13, `npm ci && npm run build && npm start` behind an HTTPS reverse proxy.
 
-There is **no login** and all settings are stored once on the server: everyone who has the link sees and can
-change the same fields, products, thresholds and spraying log. That suits one farm sharing a link; for separate
-farms run one instance each, or put the proxy's basic auth in front.
+## Sign-in and farms
+
+Everything except `/api/health`, `/api/auth/*` and `/api/push/key` needs a signed-in account.
+
+- **Providers:** Google Sign-In and Sign in with Apple (OpenID Connect). The browser gets an ID token (JWT)
+  from Google/Apple and posts it to the server. `server/src/auth.ts` verifies the signature against the provider's
+  published keys (JWKS), the issuer, the audience (our client id), expiry, a one-time nonce issued by the server
+  (also held in an HttpOnly cookie), and that the e-mail is verified. The stable account id (`sub`) and e-mail
+  are taken from the token; nothing else from the browser is trusted.
+- **Session:** a random 256-bit token in an HttpOnly, SameSite=Lax, Secure cookie (90 days). Only its SHA-256 is
+  stored. State-changing requests from another origin are refused.
+- **Accounts:** Google and Apple sign-ins with the same verified e-mail are the same account.
+- **Farms:** every new account gets its own farm (fields, groups, products, thresholds, location, log, push
+  subscriptions). The owner invites people by e-mail under *Iestatījumi → Saimniecība*; they join on their
+  first sign-in with that address (no e-mail is sent – tell them the link). Owners can rename the farm, remove
+  people and make others owners; anyone can create more farms and switch between them. Every request names its
+  farm (`x-farm` header) and the server checks membership, so data never crosses farms.
+- **Account deletion:** *Iestatījumi → Konts → Dzēst kontu*. Farms where the user was alone are deleted with
+  their log; otherwise ownership passes to the longest-standing member.
+- **Data from before sign-in existed** becomes one farm, given to the account whose e-mail is `OWNER_EMAIL`
+  (to the first account that signs in if `OWNER_EMAIL` is not set – so set it).
+- **Weather** is fetched per location; farms at the same point share it. Locations of farms used in the last
+  7 days or with notifications on are refreshed every 10 minutes.
+- **Language** is per phone, not per farm.
+
+### Setting up the providers
+
+| Variable | Where it comes from |
+|---|---|
+| `GOOGLE_CLIENT_ID` | Google Cloud Console → APIs & Services → Credentials → *Create OAuth client ID* → type *Web application*; *Authorized JavaScript origins*: `https://<your-host>`. No redirect URI needed (popup). The OAuth consent screen must be set up (External, publish it). |
+| `APPLE_CLIENT_ID` | Apple Developer (paid membership) → Certificates, Identifiers & Profiles → *Identifiers* → an App ID with *Sign in with Apple*, then a *Services ID*; configure it with domain `<your-host>` and return URL `https://<your-host>/`. The Services ID string (e.g. `lv.example.spray.web`) is the value. |
+| `OWNER_EMAIL` | The e-mail that should receive the existing data. |
+
+Either provider alone is enough; its button only shows when its variable is set. For local testing without
+providers, `DEV_LOGIN=1` shows an e-mail-only sign-in (ignored when `NODE_ENV=production`; never use it on a
+public server).
 
 **Installing on a phone:** Android/Chrome → menu → *Install app*. iPhone/Safari → Share → *Add to Home Screen*
 (on iOS push notifications only work after this step, iOS 16.4+).
@@ -209,7 +242,6 @@ and kept in the database.
 ## Not done / known limits
 
 - LVC live feed untested (see above).
-- No authentication, single farm, single set of settings shared by all devices.
 - The buffer-zone check shows only the wind direction on a compass; sensitive objects around fields are not marked
   in the app (removed on request) – check them on site.
 - Log records cannot be edited or deleted in the UI (deliberate for a register; end time is not captured).

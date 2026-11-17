@@ -15,3 +15,9 @@ services:
         value: /data/spray.sqlite
       - key: VAPID_SUBJECT
         sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: APPLE_CLIENT_ID
+        sync: false
+      - key: OWNER_EMAIL
+        sync: false

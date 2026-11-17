@@ -163,7 +163,9 @@ describe('chosen location', () => {
     expect(buildUrl({ lat: 56.95, lon: 24.1 })).toContain('latitude=56.95&longitude=24.1');
   });
   it('never shows weather cached for another place', () => {
-    sourceOk('open-meteo', { slots: [{ t: 'x' }], hourlyTemps: [], sunrise: [], sunset: [], models: ['M'], farmKey: '57.3150,25.3550' }, 'M');
+    sourceOk('open-meteo@57.3150,25.3550', { slots: [{ t: 'x' }], hourlyTemps: [], sunrise: [], sunset: [], models: ['M'], farmKey: '57.3150,25.3550' }, 'M');
+    // a payload filed under the right key but fetched for another place is ignored too
+    sourceOk('open-meteo@56.9500,24.1000', { slots: [{ t: 'y' }], hourlyTemps: [], sunrise: [], sunset: [], models: ['M'], farmKey: '57.3150,25.3550' }, 'M');
     const farm = { name: 'Rīga', lat: 56.95, lon: 24.1, timezone: 'Europe/Riga' };
     expect(assembleSnapshot(farm).forecast.slots).toEqual([]);
     expect(assembleSnapshot(farm).farm.name).toBe('Rīga');

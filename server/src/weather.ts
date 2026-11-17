@@ -1,6 +1,6 @@
 import type { HourlyTemp, Snapshot, SourceStatus, StationObservation } from '@spray/shared';
 import { kvGet, kvSet, sourceFail, sourceGet, sourceOk } from './db';
-import { currentFarm, farmKey, type Farm } from './farm';
+import { farmKey, type Farm } from './farm';
 import { fetchLvc, LVC_LABEL, type LvcParseResult } from './sources/lvc';
 import { fetchLvgmc, LVGMC_LABEL, type LvgmcResult } from './sources/lvgmc';
 import { fetchForecast, OPEN_METEO_LABEL, type ForecastResult } from './sources/openMeteo';
@@ -22,14 +22,17 @@ export function mergeHourlyTemps(model: HourlyTemp[], observed: HourlyTemp[]): H
 
 type Keyed<T> = T & { farmKey?: string };
 
+/** Source data is cached per location: "open-meteo@57.3150,25.3550". */
+const cacheKey = (id: string, key: string) => `${id}@${key}`;
+
 /** Cached payload, but only if it was fetched for this location (never show another place's weather). */
 function forFarm<T>(id: 'lvc' | 'lvgmc' | 'open-meteo', key: string) {
-  const r = sourceGet<Keyed<T>>(id);
+  const r = sourceGet<Keyed<T>>(cacheKey(id, key));
   return r.payload && r.payload.farmKey === key ? r : { ...r, payload: null, fetchedAt: null };
 }
 
 /** Build the snapshot purely from the cache, so a failing source degrades to its last good data. */
-export function assembleSnapshot(farm: Farm = currentFarm()): Snapshot {
+export function assembleSnapshot(farm: Farm): Snapshot {
   const key = farmKey(farm);
   const lvc = forFarm<LvcParseResult>('lvc', key);
   const lvgmc = forFarm<LvgmcResult>('lvgmc', key);
@@ -39,7 +42,7 @@ export function assembleSnapshot(farm: Farm = currentFarm()): Snapshot {
     ...(lvgmc.payload?.observation ? [lvgmc.payload.observation] : []),
   ];
   const sources: SourceStatus[] = SOURCES.map((s) => {
-    const r = sourceGet<unknown>(s.id);
+    const r = sourceGet<unknown>(cacheKey(s.id, key));
     return { id: s.id, label: s.label, ok: r.ok, attemptedAt: r.attemptedAt, fetchedAt: r.fetchedAt, error: r.error, detail: r.detail ?? undefined };
   });
   return {
@@ -59,42 +62,36 @@ export function assembleSnapshot(farm: Farm = currentFarm()): Snapshot {
   };
 }
 
-let running: Promise<Snapshot> | null = null;
-let runningKey = '';
-let lastRun = 0;
-let lastKey = '';
+const running = new Map<string, Promise<Snapshot>>();
+const lastRun = new Map<string, number>();
 
-/** Fetch all sources (independently — one failing never blocks the others), cache, and rebuild the snapshot. */
-export function refreshAll(log: (msg: string) => void = () => {}): Promise<Snapshot> {
-  const farm = currentFarm();
+/** Fetch all sources for one location (independently — one failing never blocks the others), cache, rebuild. */
+export function refreshAll(farm: Farm, log: (msg: string) => void = () => {}): Promise<Snapshot> {
   const key = farmKey(farm);
-  if (running && runningKey === key) return running;
-  // The location changed while a fetch for the old one was running: fetch again for the new one afterwards.
-  if (running) return running.then(() => refreshAll(log), () => refreshAll(log));
-  runningKey = key;
-  running = (async () => {
+  const busy = running.get(key);
+  if (busy) return busy;
+  const job = (async () => {
     await Promise.all(SOURCES.map(async (s) => {
       try {
         const r = await (s.run as (f: Farm) => Promise<any>)(farm);
-        sourceOk(s.id, { ...r, farmKey: key }, (s.detail as (x: any) => string)(r));
+        sourceOk(cacheKey(s.id, key), { ...r, farmKey: key }, (s.detail as (x: any) => string)(r));
       } catch (e: any) {
-        sourceFail(s.id, String(e?.message ?? e).slice(0, 300));
-        log(`[fetch] ${s.id} failed: ${e?.message ?? e}`);
+        sourceFail(cacheKey(s.id, key), String(e?.message ?? e).slice(0, 300));
+        log(`[fetch] ${s.id} @ ${key} failed: ${e?.message ?? e}`);
       }
     }));
-    lastRun = Date.now();
-    lastKey = key;
+    lastRun.set(key, Date.now());
     const snap = assembleSnapshot(farm);
-    kvSet('snapshot', snap);
+    kvSet(`snapshot@${key}`, snap);
     return snap;
-  })().finally(() => { running = null; });
-  return running;
+  })().finally(() => running.delete(key));
+  running.set(key, job);
+  return job;
 }
 
-export function currentSnapshot(): Snapshot {
-  const snap = kvGet<Snapshot>('snapshot');
-  return snap && farmKey(snap.farm) === farmKey(currentFarm()) ? snap : assembleSnapshot();
+/** Latest snapshot for a location, named after the farm's place; null if it has never been fetched. */
+export function cachedSnapshot(farm: Farm): Snapshot | null {
+  const snap = kvGet<Snapshot>(`snapshot@${farmKey(farm)}`);
+  return snap ? { ...snap, farm: { ...snap.farm, name: farm.name } } : null;
 }
-export const msSinceLastRun = () => Date.now() - lastRun;
-/** True when the last fetch was for a different location than the one now chosen. */
-export const locationChanged = () => lastKey !== farmKey(currentFarm());
+export const msSinceLastRun = (farm: Farm) => Date.now() - (lastRun.get(farmKey(farm)) ?? 0);
