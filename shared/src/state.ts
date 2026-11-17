@@ -13,6 +13,13 @@ export interface Field {
   hives: number[];
 }
 
+/** Fields sprayed together in one pass (many small plots side by side). */
+export interface FieldGroup {
+  id: string;
+  name: string;
+  fieldIds: string[];
+}
+
 export interface AppState {
   version: 1;
   updatedAt: string;
@@ -22,6 +29,9 @@ export interface AppState {
   selectedProductId: string | null;
   fields: Field[];
   selectedFieldId: string | null;
+  groups: FieldGroup[];
+  /** When set, the main screen works for this group (its first field gives crop and surroundings). */
+  selectedGroupId: string | null;
   operator: { name: string; certificate: string };
   nozzle: string;
 }
@@ -44,6 +54,8 @@ export function defaultState(): AppState {
     selectedProductId: null,
     fields: [{ id: 'f1', name: 'Lauks 1', areaHa: null, cropId: null, bbch: null, water: [], neighbours: [], hives: [] }],
     selectedFieldId: 'f1',
+    groups: [],
+    selectedGroupId: null,
     operator: { name: '', certificate: '' },
     nozzle: '',
   };
@@ -60,14 +72,22 @@ export function normalizeState(raw: unknown): AppState {
     thresholds: s.thresholds ?? {},
     products: Array.isArray(s.products) ? s.products : [],
     fields: Array.isArray(s.fields) && s.fields.length ? s.fields : d.fields,
+    groups: Array.isArray(s.groups) ? s.groups : [],
+    selectedGroupId: typeof s.selectedGroupId === 'string' ? s.selectedGroupId : null,
     operator: { ...d.operator, ...(s.operator ?? {}) },
   };
 }
 
 /** What the rules engine needs out of the saved settings. */
-export function ruleContext(s: AppState): { thresholds: Thresholds; product: Product | null; field: Field | null; crop: CropSelection } {
-  const field = s.fields.find((f) => f.id === s.selectedFieldId) ?? s.fields[0] ?? null;
+export function ruleContext(s: AppState): {
+  thresholds: Thresholds; product: Product | null; field: Field | null; crop: CropSelection; group: FieldGroup | null; targetFields: Field[];
+} {
+  const group = s.groups.find((g) => g.id === s.selectedGroupId) ?? null;
+  const groupFields = group ? s.fields.filter((f) => group.fieldIds.includes(f.id)) : [];
+  const field = groupFields[0] ?? s.fields.find((f) => f.id === s.selectedFieldId) ?? s.fields[0] ?? null;
   return {
+    group: groupFields.length ? group : null,
+    targetFields: groupFields.length ? groupFields : field ? [field] : [],
     thresholds: mergeThresholds(s.thresholds),
     product: s.products.find((p) => p.id === s.selectedProductId) ?? null,
     field,
@@ -114,4 +134,6 @@ export interface LogRecord {
   weather: WeatherSnapshotItem[];
   prechecks: { id: string; label: string; checked: boolean }[];
   notes: string;
+  /** Records made in one pass over several fields share a batch id and list all fields of the pass. */
+  batch?: { id: string; group: string | null; fields: string[] } | null;
 }

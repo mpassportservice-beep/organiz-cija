@@ -175,6 +175,15 @@ crop, BBCH, product, registration number, dose, spray volume, target, operator, 
 pre-harvest date, the flag with all 10 check results, and the full weather snapshot with the source of each value.
 Records made without signal are queued on the phone and synced later.
 
+**Field groups** (*Iestatījumi → Lauku grupas*): many small plots sprayed in one pass can be grouped. Pick the
+group on the main screen; before spraying every field is listed with a tick box (group fields pre-ticked, any can
+be added or removed). Saving creates one log record per ticked field — same weather, checks and treatment, each
+with its own area, crop and BBCH — linked by a batch id and the column *Smidzināts kopā ar*. With a product that
+limits the BBCH stage, a group is rated by its strictest field.
+
+**Explanations:** tapping any row on the main screen opens what the value is, why it matters before spraying, and
+the limits the app currently applies (`web/src/explain.ts`).
+
 Export from *Žurnāls*: CSV (semicolon-separated, UTF-8 BOM — opens directly in Excel with Latvian settings) and
 PDF. The field set is meant to cover a plant protection product usage register, but I have **not** checked it
 line-by-line against the current VAAD form — do that before relying on it as the official record.

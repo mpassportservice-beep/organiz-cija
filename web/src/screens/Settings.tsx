@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { DEMO } from '../demo';
-import { CROPS, DEFAULT_THRESHOLDS, THRESHOLD_GROUPS, type Field, type Thresholds } from '@spray/shared';
+import { CROPS, DEFAULT_THRESHOLDS, THRESHOLD_GROUPS, type Field, type FieldGroup, type Thresholds } from '@spray/shared';
 import type { Ctx } from '../App';
 import { pushCurrent, pushDisable, pushEnable, pushSupported, pushTest } from '../data';
-import { THRESHOLD_LABELS, type Key } from '../i18n';
+import { fieldCount, THRESHOLD_LABELS, type Key } from '../i18n';
 import { ago, Btn, Card, FieldMap, fmtTime, inputCls, Labeled, NumInput, SECTOR_COLORS, SectorPicker } from '../ui';
 
 function FieldEditor({ ctx, f }: { ctx: Ctx; f: Field }) {
@@ -36,9 +36,52 @@ function FieldEditor({ ctx, f }: { ctx: Ctx; f: Field }) {
       {state.fields.length > 1 && (
         <Btn kind="danger" className="w-full" onClick={() => {
           if (!DEMO && !confirm(`${t('delete')}: ${f.name}?`)) return;
-          update((s) => { const fields = s.fields.filter((x) => x.id !== f.id); return { fields, selectedFieldId: s.selectedFieldId === f.id ? fields[0].id : s.selectedFieldId }; });
+          update((s) => {
+            const fields = s.fields.filter((x) => x.id !== f.id);
+            const groups = s.groups.map((g) => ({ ...g, fieldIds: g.fieldIds.filter((id) => id !== f.id) }));
+            return { fields, groups, selectedFieldId: s.selectedFieldId === f.id ? fields[0].id : s.selectedFieldId };
+          });
         }}>{t('delete')}</Btn>
       )}
+    </div>
+  );
+}
+
+function GroupEditor({ ctx, g, onClose }: { ctx: Ctx; g: FieldGroup; onClose: () => void }) {
+  const { t, state, update } = ctx;
+  const set = (patch: Partial<FieldGroup>) => update((s) => ({ groups: s.groups.map((x) => (x.id === g.id ? { ...x, ...patch } : x)) }));
+  const toggle = (id: string) => set({ fieldIds: g.fieldIds.includes(id) ? g.fieldIds.filter((x) => x !== id) : [...g.fieldIds, id] });
+  const area = state.fields.filter((f) => g.fieldIds.includes(f.id)).reduce((a, f) => a + (f.areaHa ?? 0), 0);
+  return (
+    <div className="space-y-3 rounded-xl border-2 border-neutral-900 p-3">
+      <Labeled label={t('groupName')}><input className={inputCls} value={g.name} onChange={(e) => set({ name: e.target.value })} /></Labeled>
+      <div>
+        <div className="mb-1 flex items-center justify-between text-sm font-semibold">
+          <span>{t('groupFields')}: {fieldCount(g.fieldIds.length, ctx.lang)}{area > 0 ? ` · ${Math.round(area * 100) / 100} ha` : ''}</span>
+          <span className="flex gap-1">
+            <button className="min-h-9 rounded-md border-2 border-neutral-900 px-2 font-bold" onClick={() => set({ fieldIds: state.fields.map((f) => f.id) })}>{t('selectAll')}</button>
+            <button className="min-h-9 rounded-md border-2 border-neutral-900 px-2 font-bold" onClick={() => set({ fieldIds: [] })}>{t('selectNone')}</button>
+          </span>
+        </div>
+        <ul className="divide-y divide-neutral-300 rounded-lg border-2 border-neutral-900">
+          {state.fields.map((f) => (
+            <li key={f.id}>
+              <label className="flex min-h-12 cursor-pointer items-center gap-3 px-3">
+                <input type="checkbox" className="h-7 w-7 shrink-0 accent-green-700" checked={g.fieldIds.includes(f.id)} onChange={() => toggle(f.id)} />
+                <span className="font-bold">{f.name}{f.areaHa ? ` · ${f.areaHa} ha` : ''}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Btn kind="danger" onClick={() => {
+          if (!DEMO && !confirm(`${t('delete')}: ${g.name}?`)) return;
+          update((s) => ({ groups: s.groups.filter((x) => x.id !== g.id), selectedGroupId: s.selectedGroupId === g.id ? null : s.selectedGroupId }));
+          onClose();
+        }}>{t('delete')}</Btn>
+        <Btn kind="ghost" onClick={onClose}>{t('close')}</Btn>
+      </div>
     </div>
   );
 }
@@ -68,6 +111,7 @@ function Notifications({ ctx }: { ctx: Ctx }) {
 export function Settings({ ctx }: { ctx: Ctx }) {
   const { t, lang, state, update, snapshot, now } = ctx;
   const [openField, setOpenField] = useState<string | null>(null);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
   const setT = (k: keyof Thresholds, v: number | null) => update((s) => {
     const th = { ...s.thresholds };
     if (v === null || v === DEFAULT_THRESHOLDS[k]) delete th[k]; else th[k] = v;
@@ -109,6 +153,25 @@ export function Settings({ ctx }: { ctx: Ctx }) {
             update((s) => ({ fields: [...s.fields, { id, name: `${t('field')} ${s.fields.length + 1}`, areaHa: null, cropId: null, bbch: null, water: [], neighbours: [], hives: [] }] }));
             setOpenField(id);
           }}>+ {t('addField')}</Btn>
+        </div>
+      </Card>
+
+      <Card title={t('groupsTitle')}>
+        <p className="mb-2 text-sm text-neutral-700">{t('groupsHint')}</p>
+        <div className="space-y-2">
+          {state.groups.map((g) => (openGroup === g.id ? (
+            <GroupEditor key={g.id} ctx={ctx} g={g} onClose={() => setOpenGroup(null)} />
+          ) : (
+            <button key={g.id} className="flex min-h-12 w-full items-center justify-between rounded-lg border-2 border-neutral-900 px-3 text-left font-bold" onClick={() => setOpenGroup(g.id)}>
+              <span>▦ {g.name} · {fieldCount(g.fieldIds.length, lang)}</span><span aria-hidden>✎</span>
+            </button>
+          )))}
+          {state.fields.length < 2 && <p className="text-sm font-semibold">{t('needTwoFields')}</p>}
+          <Btn className="w-full" disabled={state.fields.length < 2} onClick={() => {
+            const id = `g${Date.now().toString(36)}`;
+            update((s) => ({ groups: [...s.groups, { id, name: `${t('groupDefault')} ${s.groups.length + 1}`, fieldIds: [] }] }));
+            setOpenGroup(id);
+          }}>+ {t('addGroup')}</Btn>
         </div>
       </Card>
 

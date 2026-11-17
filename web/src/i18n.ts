@@ -2,13 +2,35 @@ import type { Lang, Thresholds } from '@spray/shared';
 
 const D = {
   appName: { lv: 'Smidzināšanas logs', en: 'Spray Window' },
-  tabNow: { lv: 'Tagad', en: 'Now' },
+  tabNow: { lv: 'LIVE', en: 'LIVE' },
   tabProducts: { lv: 'Līdzekļi', en: 'Products' },
   tabLog: { lv: 'Žurnāls', en: 'Log' },
   tabSettings: { lv: 'Iestatījumi', en: 'Settings' },
   field: { lv: 'Lauks', en: 'Field' },
   product: { lv: 'Līdzeklis', en: 'Product' },
-  noProduct: { lv: 'Bez līdzekļa (noklusējuma robežas)', en: 'No product (default limits)' },
+  noProduct: { lv: 'Līdzeklis', en: 'Product' },
+  whatIsThis: { lv: 'kas tas ir?', en: 'what is this?' },
+  nowLabel: { lv: 'Šobrīd', en: 'Now' },
+  exWhat: { lv: 'Kas tas ir?', en: 'What is it?' },
+  exWhy: { lv: 'Kāpēc tas ir svarīgi pirms smidzināšanas?', en: 'Why does it matter before spraying?' },
+  exRule: { lv: 'Kā lietotne to vērtē', en: 'How the app rates it' },
+  exEdit: { lv: 'Robežas var mainīt sadaļā "Iestatījumi" → "Robežvērtības" vai līdzekļa kartītē.', en: 'Limits can be changed under "Settings" → "Thresholds" or on the product card.' },
+  groupsTitle: { lv: 'Lauku grupas', en: 'Field groups' },
+  groupsHint: { lv: 'Lauki, kurus smidzina vienā reizē pēc kārtas. Grupu var izvēlēties sākuma ekrānā, un pirms smidzināšanas visi tās lauki būs atzīmēti.', en: 'Fields sprayed together, one after another. Pick the group on the main screen and all its fields will be ticked before spraying.' },
+  addGroup: { lv: 'Izveidot grupu', en: 'Create group' },
+  groupName: { lv: 'Grupas nosaukums', en: 'Group name' },
+  groupFields: { lv: 'Lauki grupā', en: 'Fields in the group' },
+  groupDefault: { lv: 'Grupa', en: 'Group' },
+  needTwoFields: { lv: 'Vispirms pievienojiet vismaz divus laukus.', en: 'Add at least two fields first.' },
+  sprayFields: { lv: 'Smidzināmie lauki', en: 'Fields to spray' },
+  sprayFieldsHint: { lv: 'Atzīmējiet laukus, kurus smidzināsiet. Katram laukam žurnālā tiks izveidots savs ieraksts ar vienādiem laikapstākļiem un pārbaudēm.', en: 'Tick the fields you will spray. Each field gets its own log record with the same weather and checks.' },
+  selectAll: { lv: 'Visi', en: 'All' },
+  selectNone: { lv: 'Neviens', en: 'None' },
+  totalArea: { lv: 'Atzīmēti', en: 'Selected' },
+  pickFields: { lv: 'atzīmējiet vismaz vienu lauku', en: 'tick at least one field' },
+  savedMany: { lv: 'Saglabāti {n} ieraksti', en: '{n} records saved' },
+  savedManyOffline: { lv: '{n} ieraksti saglabāti tālrunī; tiks nosūtīti, kad būs sakari', en: '{n} records saved on the phone; will sync when online' },
+  sprayedTogether: { lv: 'Smidzināts kopā ar', en: 'Sprayed together with' },
   loading: { lv: 'Ielādē datus…', en: 'Loading data…' },
   noDataYet: { lv: 'Datu vēl nav. Pārbaudiet savienojumu un atsvaidziniet.', en: 'No data yet. Check the connection and refresh.' },
   offline: { lv: 'BEZSAISTE – rādīti pēdējie saglabātie dati', en: 'OFFLINE – showing last saved data' },
@@ -145,6 +167,12 @@ export function makeT(lang: Lang) {
     D[key][lang].replace(/\{(\w+)\}/g, (_, k) => String(params?.[k] ?? ''));
 }
 export type TFn = ReturnType<typeof makeT>;
+
+/** "1 lauks", "3 lauki", "21 lauks" / "1 field", "3 fields". */
+export function fieldCount(n: number, lang: Lang): string {
+  if (lang === 'en') return `${n} field${n === 1 ? '' : 's'}`;
+  return `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'lauks' : 'lauki'}`;
+}
 
 export const THRESHOLD_LABELS: Record<keyof Thresholds, { lv: string; en: string }> = {
   windCalmBelow: { lv: 'Bezvējš zem (dzeltens)', en: 'Too calm below (amber)' },

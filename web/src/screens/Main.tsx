@@ -3,6 +3,7 @@ import {
   BBCH_STAGES, CHECK_LABELS, CROPS, FLAG_LABELS, compass, formatReason, type CheckResult, type Reading,
 } from '@spray/shared';
 import type { Ctx } from '../App';
+import { explain } from '../explain';
 import { ago, Btn, fmtTime, inputCls, Labeled, NumInput, SourceLine, STATUS_BG, StatusIcon, WindArrow } from '../ui';
 
 const FLAG_HEX = { green: '#15803d', amber: '#fbbf24', red: '#b91c1c' } as const;
@@ -12,7 +13,7 @@ function uniqueReadings(rs: Reading[]): Reading[] {
   return rs.filter((r) => { const k = `${r.source}|${r.station}|${r.time}|${r.fallback}|${r.stale}`; if (seen.has(k)) return false; seen.add(k); return true; });
 }
 
-function Row({ ch, ctx, onCrop }: { ch: CheckResult; ctx: Ctx; onCrop: () => void }) {
+function Row({ ch, ctx, onCrop, onInfo }: { ch: CheckResult; ctx: Ctx; onCrop: () => void; onInfo: () => void }) {
   const { lang, t, conditions: c } = ctx;
   const dir = c?.windDir?.value ?? null;
   let right: React.ReactNode = ch.value !== null ? (<><span className="text-2xl font-black tabular-nums">{ch.value}</span><span className="ml-1 text-sm font-semibold">{ch.unit}</span></>) : null;
@@ -27,9 +28,10 @@ function Row({ ch, ctx, onCrop }: { ch: CheckResult; ctx: Ctx; onCrop: () => voi
   return (
     <li className="flex items-start gap-3 border-b border-neutral-300 py-2 last:border-b-0">
       <div className="pt-0.5"><StatusIcon status={ch.status} /></div>
-      <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-semibold text-neutral-700">
+      <button type="button" onClick={onInfo} className="min-w-0 flex-1 text-left" aria-label={`${CHECK_LABELS[ch.id][lang]} – ${t('whatIsThis')}`}>
+        <div className="flex items-center gap-1 text-[13px] font-semibold text-neutral-700">
           {CHECK_LABELS[ch.id][lang]}
+          <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-neutral-700 text-[11px] font-black leading-none" aria-hidden>i</span>
           {ch.productRule && <span className="ml-1 rounded bg-neutral-900 px-1 text-[10px] font-bold text-white">{t('productLimit')}</span>}
         </div>
         <div className="text-base font-bold leading-tight">{formatReason(ch.reason, lang)}</div>
@@ -46,7 +48,7 @@ function Row({ ch, ctx, onCrop }: { ch: CheckResult; ctx: Ctx; onCrop: () => voi
           </div>
         )}
         {(ch.id === 'deltaT' || ch.id === 'inversion') && <div className="text-[11px] text-neutral-500">{t('calc')}</div>}
-      </div>
+      </button>
       <div className="flex shrink-0 items-baseline pt-1">{right}</div>
     </li>
   );
@@ -94,6 +96,34 @@ function Timeline({ ctx }: { ctx: Ctx }) {
   );
 }
 
+function InfoSheet({ ctx, ch, onClose }: { ctx: Ctx; ch: CheckResult; onClose: () => void }) {
+  const { t, lang, rule } = ctx;
+  const rainHours = rule.product?.rainFreeHours ?? rule.thresholds.rainFreeHours;
+  const e = explain(ch.id, lang, rule.thresholds, rule.product, rainHours);
+  return (
+    <div className="fixed inset-0 z-30 flex items-end bg-black/60" onClick={onClose} role="dialog" aria-modal="true" aria-label={CHECK_LABELS[ch.id][lang]}>
+      <div className="safe-b mx-auto max-h-[88dvh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-4" onClick={(ev) => ev.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-xl font-extrabold leading-tight">{CHECK_LABELS[ch.id][lang]}</h2>
+          <button onClick={onClose} className="min-h-11 min-w-11 rounded-lg border-2 border-neutral-900 text-lg font-black" aria-label={t('close')}>✕</button>
+        </div>
+        <div className={`mt-2 flex items-center gap-2 rounded-lg px-3 py-2 font-bold ${STATUS_BG[ch.status]}`}>
+          <span className="shrink-0 rounded-full bg-white/95 p-0.5"><StatusIcon status={ch.status} size={24} /></span>
+          <span>{t('nowLabel')}: {formatReason(ch.reason, lang)}</span>
+        </div>
+        <h3 className="mt-3 text-base font-extrabold">{t('exWhat')}</h3>
+        <p className="mt-0.5 text-[15px] leading-snug">{e.what}</p>
+        <h3 className="mt-3 text-base font-extrabold">{t('exWhy')}</h3>
+        <p className="mt-0.5 text-[15px] leading-snug">{e.why}</p>
+        <h3 className="mt-3 text-base font-extrabold">{t('exRule')}</h3>
+        <p className="mt-0.5 text-[15px] leading-snug">{e.rule}</p>
+        <p className="mt-1 text-sm text-neutral-600">{t('exEdit')}</p>
+        <Btn className="mt-4 w-full" onClick={onClose}>{t('close')}</Btn>
+      </div>
+    </div>
+  );
+}
+
 function CropSheet({ ctx, onClose }: { ctx: Ctx; onClose: () => void }) {
   const { t, lang, rule, update } = ctx;
   const f = rule.field;
@@ -127,6 +157,10 @@ function CropSheet({ ctx, onClose }: { ctx: Ctx; onClose: () => void }) {
 export function Main({ ctx, onStart }: { ctx: Ctx; onStart: () => void }) {
   const { t, lang, state, update, snapshot, evaluation: ev, offline, busy, refresh, now } = ctx;
   const [cropOpen, setCropOpen] = useState(false);
+  const [info, setInfo] = useState<CheckResult['id'] | null>(null);
+  const infoCheck = info && ev ? ev.checks.find((c) => c.id === info) ?? null : null;
+  // Crop stage only matters on the main screen when the chosen product limits the BBCH stage.
+  const rows = ev ? ev.checks.filter((c) => c.id !== 'crop' || c.status !== 'info') : [];
   const age = snapshot ? now - Date.parse(snapshot.generatedAt) : 0;
   const ageMin = Math.floor(age / 60_000);
   const usingForecast = !!ctx.conditions && [ctx.conditions.wind, ctx.conditions.temp, ctx.conditions.gust, ctx.conditions.rh].some((r) => r?.fallback || r?.stale);
@@ -135,8 +169,16 @@ export function Main({ ctx, onStart }: { ctx: Ctx; onStart: () => void }) {
     <div className="space-y-2 px-3 pb-3">
       <div className="grid grid-cols-2 gap-2">
         <select aria-label={t('field')} className="min-h-11 w-full rounded-lg border-2 border-neutral-900 bg-white px-2 text-sm font-bold"
-          value={state.selectedFieldId ?? ''} onChange={(e) => update({ selectedFieldId: e.target.value })}>
-          {state.fields.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          value={ctx.rule.group ? `g:${ctx.rule.group.id}` : state.selectedFieldId ?? ''}
+          onChange={(e) => { const v = e.target.value; update(v.startsWith('g:') ? { selectedGroupId: v.slice(2) } : { selectedFieldId: v, selectedGroupId: null }); }}>
+          {state.groups.length > 0 && (
+            <optgroup label={t('groupsTitle')}>
+              {state.groups.map((g) => <option key={g.id} value={`g:${g.id}`}>▦ {g.name} ({g.fieldIds.length})</option>)}
+            </optgroup>
+          )}
+          <optgroup label={t('fieldsTitle')}>
+            {state.fields.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </optgroup>
         </select>
         <select aria-label={t('product')} className="min-h-11 w-full rounded-lg border-2 border-neutral-900 bg-white px-2 text-sm font-bold"
           value={state.selectedProductId ?? ''} onChange={(e) => update({ selectedProductId: e.target.value || null })}>
@@ -173,13 +215,14 @@ export function Main({ ctx, onStart }: { ctx: Ctx; onStart: () => void }) {
           </div>
 
           <ul className="rounded-xl border-2 border-neutral-900 px-3">
-            {ev.checks.map((ch) => <Row key={ch.id} ch={ch} ctx={ctx} onCrop={() => setCropOpen(true)} />)}
+            {rows.map((ch) => <Row key={ch.id} ch={ch} ctx={ctx} onCrop={() => setCropOpen(true)} onInfo={() => setInfo(ch.id)} />)}
           </ul>
 
           <Btn className="w-full !min-h-14 text-lg" onClick={onStart}>{t('start')} →</Btn>
         </>
       )}
       {cropOpen && <CropSheet ctx={ctx} onClose={() => setCropOpen(false)} />}
+      {infoCheck && <InfoSheet ctx={ctx} ch={infoCheck} onClose={() => setInfo(null)} />}
     </div>
   );
 }

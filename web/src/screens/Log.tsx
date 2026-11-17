@@ -31,6 +31,9 @@ export function Log({ ctx }: { ctx: Ctx }) {
               <div><strong>{t('operator')}:</strong> {r.operator.name || '—'}{r.operator.certificate ? ` · ${r.operator.certificate}` : ''}</div>
               {r.nozzle && <div><strong>{t('nozzle')}:</strong> {r.nozzle}</div>}
               {r.purpose && <div><strong>{t('purpose')}:</strong> {r.purpose}</div>}
+              {r.batch && r.batch.fields.length > 1 && (
+                <div><strong>{t('sprayedTogether')}:</strong> {r.batch.group ? `▦ ${r.batch.group} – ` : ''}{r.batch.fields.filter((n) => n !== r.field.name).join(', ')}</div>
+              )}
               {r.earliestHarvest && <div><strong>{t('harvestFrom')}:</strong> {r.earliestHarvest}</div>}
               <div className={`rounded px-2 py-1 font-bold ${STATUS_BG[r.flag]}`}>{r.flagReason}</div>
               <div className="font-bold">{t('weatherAtStart')}</div>

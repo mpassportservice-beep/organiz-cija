@@ -21,17 +21,24 @@ const T = {
     title: 'Augu aizsardzības līdzekļu lietošanas uzskaite', date: 'Datums', start: 'Sākums', end: 'Beigas', field: 'Lauks', area: 'Platība, ha',
     crop: 'Kultūraugs', bbch: 'BBCH', product: 'AAL nosaukums', reg: 'Reģ. Nr.', dose: 'Deva', unit: 'Devas mērv.', water: 'Darba šķidrums, l/ha',
     purpose: 'Kaitīgais organisms / mērķis', bee: 'Bīstams bitēm', phi: 'Nogaidīšanas laiks, d', harvest: 'Agrākā raža', operator: 'Operators',
-    cert: 'Apliecības Nr.', nozzle: 'Sprauslas', flag: 'Karogs', reason: 'Iemesls', prechecks: 'Pārbaudes', notes: 'Piezīmes', weather: 'Laikapstākļi sākumā',
+    cert: 'Apliecības Nr.', nozzle: 'Sprauslas', flag: 'Karogs', reason: 'Iemesls', prechecks: 'Pārbaudes', notes: 'Piezīmes', batch: 'Smidzināts kopā ar', weather: 'Laikapstākļi sākumā',
     yes: 'Jā', no: 'Nē', generated: 'Sagatavots', value: 'vērtība', source: 'avots', station: 'stacija', km: 'km', at: 'laiks', kind: 'veids', none: 'Nav ierakstu',
   },
   en: {
     title: 'Plant protection product usage record', date: 'Date', start: 'Start', end: 'End', field: 'Field', area: 'Area, ha',
     crop: 'Crop', bbch: 'BBCH', product: 'Product', reg: 'Reg. no.', dose: 'Dose', unit: 'Dose unit', water: 'Spray volume, l/ha',
     purpose: 'Target organism / purpose', bee: 'Bee-hazardous', phi: 'Pre-harvest interval, d', harvest: 'Earliest harvest', operator: 'Operator',
-    cert: 'Certificate no.', nozzle: 'Nozzles', flag: 'Flag', reason: 'Reason', prechecks: 'Pre-checks', notes: 'Notes', weather: 'Weather at start',
+    cert: 'Certificate no.', nozzle: 'Nozzles', flag: 'Flag', reason: 'Reason', prechecks: 'Pre-checks', notes: 'Notes', batch: 'Sprayed together with', weather: 'Weather at start',
     yes: 'Yes', no: 'No', generated: 'Generated', value: 'value', source: 'source', station: 'station', km: 'km', at: 'time', kind: 'kind', none: 'No records',
   },
 } as const;
+
+/** Other fields of the same pass, e.g. "Grupa A – Lauks 2, Lauks 3". */
+function batchText(r: LogRecord): string {
+  if (!r.batch || r.batch.fields.length < 2) return '';
+  const others = r.batch.fields.filter((n) => n !== r.field.name).join(', ');
+  return r.batch.group ? `${r.batch.group} – ${others}` : others;
+}
 
 function csvCell(v: unknown): string {
   let s = v === null || v === undefined ? '' : String(v);
@@ -43,7 +50,7 @@ function csvCell(v: unknown): string {
 export function logsToCsv(records: LogRecord[], lang: Lang): string {
   const t = T[lang];
   const head: string[] = [t.date, t.start, t.end, t.field, t.area, t.crop, t.bbch, t.product, t.reg, t.dose, t.unit, t.water, t.purpose,
-    t.bee, t.phi, t.harvest, t.operator, t.cert, t.nozzle, t.flag, t.reason, t.prechecks, t.notes];
+    t.bee, t.phi, t.harvest, t.operator, t.cert, t.nozzle, t.flag, t.reason, t.prechecks, t.notes, t.batch];
   for (const k of WEATHER_KEYS) head.push(`${k} ${t.value}`, `${k} ${t.source}`, `${k} ${t.station}`, `${k} ${t.km}`, `${k} ${t.at}`, `${k} ${t.kind}`);
   head.push('id', 'started_at_utc');
   const rows = records.map((r) => {
@@ -51,7 +58,7 @@ export function logsToCsv(records: LogRecord[], lang: Lang): string {
     const row: unknown[] = [s.date, s.time, local(r.endedAt).time, r.field.name, r.field.areaHa, r.crop.name, r.crop.bbch, r.product.name,
       r.product.regNumber, r.dose, r.doseUnit, r.waterLHa, r.purpose, r.product.beeHazard ? t.yes : t.no, r.product.phiDays, r.earliestHarvest,
       r.operator.name, r.operator.certificate, r.nozzle, r.flag, r.flagReason,
-      r.prechecks.map((p) => `${p.checked ? '[x]' : '[ ]'} ${p.label}`).join(' | '), r.notes];
+      r.prechecks.map((p) => `${p.checked ? '[x]' : '[ ]'} ${p.label}`).join(' | '), r.notes, batchText(r)];
     for (const k of WEATHER_KEYS) {
       const w = r.weather.find((x) => x.key === k);
       row.push(w ? `${w.value}${w.unit ? ' ' + w.unit : ''}` : '', w?.source, w?.station, w?.distanceKm, w ? `${local(w.time).date} ${local(w.time).time}` : '', w?.kind);
@@ -93,6 +100,7 @@ export function logsToPdf(records: LogRecord[], lang: Lang): Promise<Buffer> {
       kv(t.product, `${r.product.name}${r.product.regNumber ? ` (${t.reg} ${r.product.regNumber})` : ''}`);
       kv(t.dose, `${r.dose} ${r.doseUnit}${r.waterLHa ? ` · ${t.water}: ${r.waterLHa}` : ''}`);
       kv(t.purpose, r.purpose);
+      if (r.batch && r.batch.fields.length > 1) kv(t.batch, batchText(r));
       kv(t.bee, r.product.beeHazard ? t.yes : t.no);
       kv(t.phi, r.product.phiDays !== null ? `${r.product.phiDays}${r.earliestHarvest ? ` → ${t.harvest}: ${r.earliestHarvest}` : ''}` : null);
       kv(t.operator, `${r.operator.name}${r.operator.certificate ? ` · ${t.cert} ${r.operator.certificate}` : ''}`);

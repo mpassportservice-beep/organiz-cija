@@ -129,4 +129,22 @@ describe('CSV export', () => {
     expect(line).toContain(`"'=HYPERLINK(""x"")"`);
     expect(line).toContain('2.4 m/s;LVC;Melturi;13.2');
   });
+
+  it('lists the other fields of a multi-field pass', () => {
+    const base = {
+      startedAt: '2026-05-20T06:00:00.000Z', crop: { id: null, name: '', bbch: null },
+      product: { name: 'X', regNumber: '', beeHazard: false, phiDays: null }, dose: '1', doseUnit: 'l/ha', waterLHa: '', purpose: '',
+      earliestHarvest: null, operator: { name: '', certificate: '' }, nozzle: '', flag: 'green' as const, flagReason: '', checks: [],
+      weather: [], prechecks: [], notes: '',
+    };
+    const batch = { id: 'b', group: 'Grupa A', fields: ['L1', 'L2', 'L3'] };
+    const csv = logsToCsv([
+      { ...base, id: '1', field: { id: 'f1', name: 'L1', areaHa: 1 }, batch },
+      { ...base, id: '2', field: { id: 'f4', name: 'L4', areaHa: 1 }, batch: null },
+    ], 'lv');
+    const [head, a, b] = csv.split('\r\n');
+    expect(head).toContain('Smidzināts kopā ar');
+    expect(a).toContain(';Grupa A – L2, L3;');
+    expect(b).not.toContain('Grupa');
+  });
 });

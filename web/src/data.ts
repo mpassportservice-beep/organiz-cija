@@ -121,12 +121,14 @@ export function useLogs() {
     return () => window.removeEventListener('online', sync);
   }, [sync]);
 
-  const add = useCallback(async (rec: LogRecord): Promise<boolean> => {
-    const q = [...(read<LogRecord[]>(LS.queue) ?? []), rec];
+  const add = useCallback(async (recs: LogRecord | LogRecord[]): Promise<boolean> => {
+    const list = Array.isArray(recs) ? recs : [recs];
+    const q = [...(read<LogRecord[]>(LS.queue) ?? []), ...list];
     write(LS.queue, q);
     setQueue(q);
     await sync();
-    return !(read<LogRecord[]>(LS.queue) ?? []).some((x) => x.id === rec.id);
+    const left = read<LogRecord[]>(LS.queue) ?? [];
+    return !list.some((r) => left.some((x) => x.id === r.id));
   }, [sync]);
 
   const pending = new Set(queue.map((q) => q.id));

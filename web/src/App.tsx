@@ -19,7 +19,7 @@ export interface Ctx {
   snapshot: Snapshot | null; offline: boolean; busy: boolean; refresh: () => void;
   rule: ReturnType<typeof ruleContext>;
   conditions: Conditions | null; evaluation: Evaluation | null; timeline: TimelineSlot[]; best: Window | null;
-  logs: LogRecord[]; pendingLogs: Set<string>; addLog: (r: LogRecord) => Promise<boolean>;
+  logs: LogRecord[]; pendingLogs: Set<string>; addLog: (r: LogRecord | LogRecord[]) => Promise<boolean>;
 }
 
 type Tab = 'now' | 'products' | 'log' | 'settings' | 'precheck';
@@ -34,20 +34,31 @@ export function App() {
   const [scen, setScen] = useState<Scenario>(getScenario());
   const lang = state.lang;
   const t = useMemo(() => makeT(lang), [lang]);
-  const rule = useMemo(() => ruleContext(state), [state]);
+  const baseRule = useMemo(() => ruleContext(state), [state]);
 
   useEffect(() => { document.documentElement.lang = lang; document.title = t('appName'); }, [lang, t]);
   useEffect(() => { window.scrollTo(0, 0); }, [tab]);
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(''), 5000); return () => clearTimeout(id); }, [toast]);
 
   const derived = useMemo(() => {
-    if (!snapshot) return { conditions: null, evaluation: null, timeline: [], best: null };
+    let rule = baseRule;
+    if (!snapshot) return { rule, conditions: null, evaluation: null, timeline: [], best: null };
     const conditions = conditionsNow(snapshot, now, rule.thresholds, rule.product);
+    // A group is as strict as its strictest field: use the field whose crop stage fares worst against the product.
+    if (rule.targetFields.length > 1 && rule.product) {
+      const RANK = { info: 0, green: 1, amber: 2, red: 3 } as const;
+      let worst = -1;
+      for (const f of rule.targetFields) {
+        const crop = { cropId: f.cropId, bbch: f.bbch };
+        const st = evaluate(conditions, rule.thresholds, rule.product, crop).checks.find((c) => c.id === 'crop')?.status ?? 'info';
+        if (RANK[st] > worst) { worst = RANK[st]; rule = { ...rule, field: f, crop }; }
+      }
+    }
     const timeline = buildTimeline(snapshot, now, rule.thresholds, rule.product, rule.crop);
-    return { conditions, evaluation: evaluate(conditions, rule.thresholds, rule.product, rule.crop), timeline, best: bestWindow(timeline) };
-  }, [snapshot, now, rule]);
+    return { rule, conditions, evaluation: evaluate(conditions, rule.thresholds, rule.product, rule.crop), timeline, best: bestWindow(timeline) };
+  }, [snapshot, now, baseRule]);
 
-  const ctx: Ctx = { lang, t, now, state, update, snapshot, offline, busy, refresh, rule, ...derived, logs, pendingLogs: pending, addLog: add };
+  const ctx: Ctx = { lang, t, now, state, update, snapshot, offline, busy, refresh, ...derived, logs, pendingLogs: pending, addLog: add };
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: 'now', label: t('tabNow'), icon: '◉' }, { id: 'products', label: t('tabProducts'), icon: '⚗' },
     { id: 'log', label: t('tabLog'), icon: '☰' }, { id: 'settings', label: t('tabSettings'), icon: '⚙' },
@@ -81,7 +92,7 @@ export function App() {
       )}
       <main className="flex-1">
         {tab === 'now' && <Main ctx={ctx} onStart={() => setTab('precheck')} />}
-        {tab === 'precheck' && <Precheck ctx={ctx} onCancel={() => setTab('now')} onDone={(synced) => { setToast(synced ? t('saved') : t('savedOffline')); setTab('log'); }} />}
+        {tab === 'precheck' && <Precheck ctx={ctx} onCancel={() => setTab('now')} onDone={(synced, n) => { setToast(n > 1 ? t(synced ? 'savedMany' : 'savedManyOffline', { n }) : synced ? t('saved') : t('savedOffline')); setTab('log'); }} />}
         {tab === 'products' && <Products ctx={ctx} />}
         {tab === 'log' && <Log ctx={ctx} />}
         {tab === 'settings' && <Settings ctx={ctx} />}
