@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import {
-  BBCH_STAGES, CHECK_LABELS, CROPS, FLAG_LABELS, compass, formatReason, type CheckResult, type Reading,
+  BBCH_STAGES, CHECK_LABELS, CROPS, FLAG_LABELS, compass, formatReason, type CheckResult, type Product, type Reading,
 } from '@spray/shared';
 import type { Ctx } from '../App';
 import { explain } from '../explain';
+import { ProductInfo, ProductPicker } from './ProductInfo';
 import { ago, Btn, fmtTime, inputCls, Labeled, NumInput, SourceLine, STATUS_BG, StatusIcon, WindArrow } from '../ui';
 
 const FLAG_HEX = { green: '#15803d', amber: '#fbbf24', red: '#b91c1c' } as const;
+const ORDER = { red: 0, amber: 1, green: 2, info: 3 } as const;
 
 function uniqueReadings(rs: Reading[]): Reading[] {
   const seen = new Set<string>();
@@ -158,9 +160,13 @@ export function Main({ ctx, onStart }: { ctx: Ctx; onStart: () => void }) {
   const { t, lang, state, update, snapshot, evaluation: ev, offline, busy, refresh, now } = ctx;
   const [cropOpen, setCropOpen] = useState(false);
   const [info, setInfo] = useState<CheckResult['id'] | null>(null);
+  const [picker, setPicker] = useState(false);
+  const [infoProduct, setInfoProduct] = useState<Product | null>(null);
   const infoCheck = info && ev ? ev.checks.find((c) => c.id === info) ?? null : null;
   // Crop stage only matters on the main screen when the chosen product limits the BBCH stage.
-  const rows = ev ? ev.checks.filter((c) => c.id !== 'crop' || c.status !== 'info') : [];
+  // Worst first: red, then amber, then green (stable within each colour).
+  const rows = ev ? ev.checks.filter((c) => c.id !== 'crop' || c.status !== 'info')
+    .map((c, i) => ({ c, i })).sort((a, b) => ORDER[a.c.status] - ORDER[b.c.status] || a.i - b.i).map((x) => x.c) : [];
   const age = snapshot ? now - Date.parse(snapshot.generatedAt) : 0;
   const ageMin = Math.floor(age / 60_000);
   const usingForecast = !!ctx.conditions && [ctx.conditions.wind, ctx.conditions.temp, ctx.conditions.gust, ctx.conditions.rh].some((r) => r?.fallback || r?.stale);
@@ -180,12 +186,27 @@ export function Main({ ctx, onStart }: { ctx: Ctx; onStart: () => void }) {
             {state.fields.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </optgroup>
         </select>
-        <select aria-label={t('product')} className="min-h-11 w-full rounded-lg border-2 border-neutral-900 bg-white px-2 text-sm font-bold"
-          value={state.selectedProductId ?? ''} onChange={(e) => update({ selectedProductId: e.target.value || null })}>
-          <option value="">{t('noProduct')}</option>
-          {state.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+        <button type="button" onClick={() => setPicker(true)} aria-haspopup="dialog"
+          className="flex min-h-11 w-full items-center justify-between gap-1 rounded-lg border-2 border-neutral-900 bg-white px-2 text-left text-sm font-bold">
+          <span className="truncate">
+            {ctx.rule.products.length === 0 ? t('noProduct')
+              : ctx.rule.products.length === 1 ? ctx.rule.products[0].name
+              : `${ctx.rule.products.length} ${t('productsShort')}`}
+          </span>
+          <span aria-hidden>▾</span>
+        </button>
       </div>
+      {ctx.rule.products.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5" aria-label={t('product')}>
+          {ctx.rule.products.map((p) => (
+            <li key={p.id} className="flex items-center gap-1 rounded-full border-2 border-neutral-900 bg-white py-0.5 pl-3 pr-0.5">
+              <span className="text-sm font-bold">{p.name}</span>
+              <button type="button" onClick={() => setInfoProduct(p)} aria-label={`${p.name} – ${t('pInfo')}`}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border-2 border-neutral-900 text-base font-black leading-none">i</button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {offline && <div className="rounded-lg bg-neutral-950 px-3 py-2 text-sm font-bold text-white">⚠ {t('offline')}</div>}
       {!offline && snapshot && ageMin > 25 && <div className="rounded-lg bg-neutral-950 px-3 py-2 text-sm font-bold text-white">⚠ {t('oldData', { min: ageMin })}</div>}
@@ -223,6 +244,8 @@ export function Main({ ctx, onStart }: { ctx: Ctx; onStart: () => void }) {
       )}
       {cropOpen && <CropSheet ctx={ctx} onClose={() => setCropOpen(false)} />}
       {infoCheck && <InfoSheet ctx={ctx} ch={infoCheck} onClose={() => setInfo(null)} />}
+      {picker && !infoProduct && <ProductPicker ctx={ctx} onClose={() => setPicker(false)} onInfo={setInfoProduct} />}
+      {infoProduct && <ProductInfo ctx={ctx} p={infoProduct} onClose={() => setInfoProduct(null)} />}
     </div>
   );
 }

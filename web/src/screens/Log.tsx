@@ -21,7 +21,7 @@ export function Log({ ctx }: { ctx: Ctx }) {
             <span className={`mt-1 rounded px-1.5 py-0.5 text-xs font-black uppercase ${STATUS_BG[r.flag]}`}>{r.flag === 'green' ? '✓' : r.flag === 'amber' ? '!' : '✕'}</span>
             <span className="min-w-0 flex-1">
               <span className="block font-extrabold">{fmtDate(r.startedAt)} {fmtTime(r.startedAt)} · {r.field.name}</span>
-              <span className="block text-sm font-semibold">{r.product.name} · {r.dose} {r.doseUnit}{r.crop.name ? ` · ${r.crop.name}` : ''}{r.crop.bbch !== null ? ` BBCH ${r.crop.bbch}` : ''}</span>
+              <span className="block text-sm font-semibold">{r.product.name} · {r.dose}{r.doseUnit ? ` ${r.doseUnit}` : ''}{r.crop.name ? ` · ${r.crop.name}` : ''}{r.crop.bbch !== null ? ` BBCH ${r.crop.bbch}` : ''}</span>
               {pendingLogs.has(r.id) && <span className="mt-1 inline-block rounded bg-neutral-900 px-1.5 text-xs font-bold text-white">{t('notSynced')}</span>}
             </span>
             <span className="text-xl" aria-hidden>{open === r.id ? '▴' : '▾'}</span>
@@ -30,6 +30,19 @@ export function Log({ ctx }: { ctx: Ctx }) {
             <div className="space-y-2 border-t-2 border-neutral-900 p-3 text-sm">
               <div><strong>{t('operator')}:</strong> {r.operator.name || '—'}{r.operator.certificate ? ` · ${r.operator.certificate}` : ''}</div>
               {r.nozzle && <div><strong>{t('nozzle')}:</strong> {r.nozzle}</div>}
+              {r.products && r.products.length > 1 && (
+                <div>
+                  <strong>{t('mixTitle')}:</strong>
+                  <ul className="ml-4 list-disc">
+                    {r.products.map((p, i) => (
+                      <li key={i}>{p.name} – {p.dose} {p.doseUnit}{p.activeSubstances.length ? ` (${p.activeSubstances.map((x) => `${x.name} ${x.amount}`.trim()).join(', ')})` : ''}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {r.products?.length === 1 && r.products[0].activeSubstances.length > 0 && (
+                <div><strong>{t('pSubstances')}:</strong> {r.products[0].activeSubstances.map((x) => `${x.name} ${x.amount}`.trim()).join(', ')}</div>
+              )}
               {r.purpose && <div><strong>{t('purpose')}:</strong> {r.purpose}</div>}
               {r.batch && r.batch.fields.length > 1 && (
                 <div><strong>{t('sprayedTogether')}:</strong> {r.batch.group ? `▦ ${r.batch.group} – ` : ''}{r.batch.fields.filter((n) => n !== r.field.name).join(', ')}</div>
@@ -45,7 +58,7 @@ export function Log({ ctx }: { ctx: Ctx }) {
                   </li>
                 ))}
               </ul>
-              <div>{r.prechecks.map((p) => <div key={p.id}>{p.checked ? '☑' : '☐'} {p.label}</div>)}</div>
+              {r.prechecks.length > 0 && <div>{r.prechecks.map((p) => <div key={p.id}>{p.checked ? '☑' : '☐'} {p.label}</div>)}</div>}
               {r.notes && <div><strong>{t('notes')}:</strong> {r.notes}</div>}
             </div>
           )}

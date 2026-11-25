@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
-  CHECK_LABELS, CROPS, FLAG_LABELS, NOZZLES, compass, deltaT, formatReason, readingKind,
-  type LogRecord, type Reading, type WeatherSnapshotItem,
+  CHECK_LABELS, CROPS, FLAG_LABELS, deltaT, formatReason, readingKind,
+  combineProducts, spectrumOf, type LogRecord, type LoggedProduct, type Product, type Reading, type WeatherSnapshotItem,
 } from '@spray/shared';
 import type { Ctx } from '../App';
 import { fieldCount } from '../i18n';
-import { Btn, Card, Check, FieldMap, inputCls, Labeled, localDateIso, STATUS_BG, StatusIcon } from '../ui';
+import { Btn, Card, inputCls, Labeled, localDateIso, STATUS_BG, StatusIcon } from '../ui';
+import { InfoButton, ProductInfo } from './ProductInfo';
 
 const UNITS = ['l/ha', 'kg/ha', 'ml/ha', 'g/ha'];
 
@@ -43,58 +44,69 @@ function weatherItems(ctx: Ctx): WeatherSnapshotItem[] {
 }
 
 export function Precheck({ ctx, onDone, onCancel }: { ctx: Ctx; onDone: (synced: boolean, count: number) => void; onCancel: () => void }) {
-  const { t, lang, state, update, rule, evaluation: ev, conditions } = ctx;
-  const p = rule.product;
+  const { t, lang, state, update, rule, evaluation: ev } = ctx;
   const [sel, setSel] = useState<string[]>(() => rule.targetFields.map((x) => x.id));
   const selFields = state.fields.filter((x) => sel.includes(x.id));
-  const f = selFields[0] ?? null;
   const toggleField = (id: string) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   const totalHa = selFields.reduce((a, x) => a + (x.areaHa ?? 0), 0);
-  const [productName, setProductName] = useState(p?.name ?? '');
-  const [dose, setDose] = useState((p?.defaultDose ?? '').replace(/\s*(l|kg|ml|g)\/ha\s*$/i, ''));
-  const [unit, setUnit] = useState(UNITS.find((u) => (p?.defaultDose ?? '').toLowerCase().includes(u)) ?? 'l/ha');
-  const [water, setWater] = useState('');
-  const [purpose, setPurpose] = useState('');
-  const [notes, setNotes] = useState('');
-  const [ticks, setTicks] = useState<Record<string, boolean>>({});
-  const [saving, setSaving] = useState(false);
-  const tick = (k: string) => (v: boolean) => setTicks((s) => ({ ...s, [k]: v }));
 
-  const windFrom = conditions?.windDir?.value ?? null;
-  const red = ev?.flag === 'red';
-  const items = useMemo(() => [
-    { id: 'bees', label: t('ckBees') }, { id: 'buffer', label: t('ckBuffer') }, { id: 'nozzle', label: t('ckNozzle') },
-    { id: 'sprayer', label: t('ckSprayer') }, { id: 'cert', label: t('ckCert') }, { id: 'soil', label: t('ckSoil') },
-    ...(red ? [{ id: 'override', label: t('ckOverride') }] : []),
-  ], [t, red]);
-  const ready = items.every((i) => ticks[i.id]) && productName.trim() !== '' && dose.trim() !== '' && state.nozzle !== '' && !!ev && selFields.length > 0;
+  // Products of this spraying = the selection on the main screen, so the flag above always matches the mix.
+  const chosen = rule.products;
+  const toggleProduct = (id: string) => update((s) => ({
+    selectedProductIds: s.selectedProductIds.includes(id) ? s.selectedProductIds.filter((x) => x !== id) : [...s.selectedProductIds, id],
+  }));
+  const [doses, setDoses] = useState<Record<string, { dose: string; unit: string }>>({});
+  const doseOf = (p: Product) => doses[p.id] ?? {
+    dose: (p.defaultDose ?? '').replace(/\s*(l|kg|ml|g)\/ha\s*$/i, '').trim(),
+    unit: UNITS.find((u) => (p.defaultDose ?? '').toLowerCase().includes(u)) ?? 'l/ha',
+  };
+  const setDose = (p: Product, patch: Partial<{ dose: string; unit: string }>) => setDoses((d) => ({ ...d, [p.id]: { ...doseOf(p), ...patch } }));
+  const [info, setInfo] = useState<Product | null>(null);
+
+  const [water, setWater] = useState('');
+  // Target is filled from what the chosen products control, until the user writes their own.
+  const autoPurpose = spectrumOf(chosen).join(', ');
+  const [ownPurpose, setOwnPurpose] = useState<string | null>(null);
+  const purpose = ownPurpose ?? autoPurpose;
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const missingDose = chosen.some((p) => doseOf(p).dose.trim() === '');
+  const ready = chosen.length > 0 && !missingDose && !!ev && selFields.length > 0;
 
   async function save() {
-    if (!ready || !ev || selFields.length === 0) return;
+    if (!ready || !ev) return;
     setSaving(true);
     const now = Date.now();
-    const nozzle = NOZZLES.find((n) => n.id === state.nozzle);
     const batchId = `${now.toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const groupName = rule.group && rule.group.fieldIds.every((id) => sel.includes(id)) ? rule.group.name : null;
     const weather = weatherItems(ctx);
+    const mix = combineProducts(chosen)!;
+    const products: LoggedProduct[] = chosen.map((p) => ({
+      name: p.name, regNumber: p.regNumber ?? '', dose: doseOf(p).dose.trim(), doseUnit: doseOf(p).unit, activeSubstances: p.activeSubstances ?? [],
+    }));
+    const single = products.length === 1;
     const recs: LogRecord[] = selFields.map((f, i) => {
-    const crop = CROPS.find((c) => c.id === f.cropId);
-    return {
-      id: `${batchId}-${i}`,
-      startedAt: new Date(now).toISOString(), endedAt: null,
-      field: { id: f.id, name: f.name, areaHa: f.areaHa },
-      crop: { id: f.cropId, name: crop ? crop[lang] : '', bbch: f.bbch },
-      product: { name: productName.trim(), regNumber: p?.regNumber ?? '', beeHazard: p?.beeHazard ?? false, phiDays: p?.phiDays ?? null },
-      dose: dose.trim(), doseUnit: unit, waterLHa: water.trim(), purpose: purpose.trim(),
-      earliestHarvest: p?.phiDays != null ? localDateIso(now + p.phiDays * 86_400_000) : null,
-      operator: { ...state.operator }, nozzle: nozzle ? nozzle[lang] : '',
-      flag: ev.flag, flagReason: ev.decisive ? formatReason(ev.decisive.reason, lang) : FLAG_LABELS[ev.flag][lang],
-      checks: ev.checks.map((c) => ({ id: c.id, label: CHECK_LABELS[c.id][lang], status: c.status, reason: formatReason(c.reason, lang) })),
-      weather,
-      prechecks: items.map((i) => ({ id: i.id, label: i.label, checked: !!ticks[i.id] })),
-      notes: notes.trim(),
-      batch: selFields.length > 1 ? { id: batchId, group: groupName, fields: selFields.map((x) => x.name) } : null,
-    };
+      const crop = CROPS.find((c) => c.id === f.cropId);
+      return {
+        id: `${batchId}-${i}`,
+        startedAt: new Date(now).toISOString(), endedAt: null,
+        field: { id: f.id, name: f.name, areaHa: f.areaHa },
+        crop: { id: f.cropId, name: crop ? crop[lang] : '', bbch: f.bbch },
+        product: { name: mix.name, regNumber: mix.regNumber ?? '', beeHazard: mix.beeHazard, phiDays: mix.phiDays },
+        products,
+        dose: single ? products[0].dose : products.map((p) => `${p.dose} ${p.doseUnit}`).join(' + '),
+        doseUnit: single ? products[0].doseUnit : '',
+        waterLHa: water.trim(), purpose: purpose.trim(),
+        earliestHarvest: mix.phiDays != null ? localDateIso(now + mix.phiDays * 86_400_000) : null,
+        operator: { ...state.operator }, nozzle: '',
+        flag: ev.flag, flagReason: ev.decisive ? formatReason(ev.decisive.reason, lang) : FLAG_LABELS[ev.flag][lang],
+        checks: ev.checks.map((c) => ({ id: c.id, label: CHECK_LABELS[c.id][lang], status: c.status, reason: formatReason(c.reason, lang) })),
+        weather,
+        prechecks: [],
+        notes: notes.trim(),
+        batch: selFields.length > 1 ? { id: batchId, group: groupName, fields: selFields.map((x) => x.name) } : null,
+      };
     });
     const synced = await ctx.addLog(recs);
     setSaving(false);
@@ -159,13 +171,49 @@ export function Precheck({ ctx, onDone, onCancel }: { ctx: Ctx; onDone: (synced:
 
       <Card title={t('treatment')}>
         <div className="space-y-3">
-          <Labeled label={t('productName')}><input className={inputCls} value={productName} onChange={(e) => setProductName(e.target.value)} /></Labeled>
-          <div className="grid grid-cols-[1fr_7rem] gap-2">
-            <Labeled label={t('dose')}><input className={inputCls} inputMode="decimal" value={dose} onChange={(e) => setDose(e.target.value)} /></Labeled>
-            <Labeled label=" "><select className={inputCls} value={unit} onChange={(e) => setUnit(e.target.value)}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select></Labeled>
+          <div>
+            <div className="mb-1 text-sm font-semibold">{t('productName')}</div>
+            {state.products.length === 0 ? <p className="rounded-lg bg-amber-100 p-2 text-sm font-semibold">{t('noProductsGoAdd')}</p> : (
+              <ul className="divide-y divide-neutral-300 rounded-lg border-2 border-neutral-900">
+                {state.products.map((p) => {
+                  const on = chosen.some((x) => x.id === p.id);
+                  const d = doseOf(p);
+                  return (
+                    <li key={p.id} className={on ? 'bg-green-50' : ''}>
+                      <div className="flex items-center gap-2 pr-2">
+                        <label className="flex min-h-12 flex-1 cursor-pointer items-center gap-3 px-3 py-1.5">
+                          <input type="checkbox" className="h-7 w-7 shrink-0 accent-green-700" checked={on} onChange={() => toggleProduct(p.id)} />
+                          <span className="min-w-0">
+                            <span className="block font-bold">{p.name}</span>
+                            {(p.activeSubstances?.length ?? 0) > 0 && <span className="block truncate text-xs text-neutral-700">{p.activeSubstances!.map((x) => x.name).join(', ')}</span>}
+                          </span>
+                        </label>
+                        <InfoButton label={`${p.name} – ${t('pInfo')}`} onClick={() => setInfo(p)} />
+                      </div>
+                      {on && (
+                        <div className="grid grid-cols-[1fr_6.5rem] gap-2 px-3 pb-2">
+                          <Labeled label={t('dose')}>
+                            <input className={`${inputCls} ${d.dose.trim() === '' ? 'border-stop' : ''}`} inputMode="decimal" value={d.dose} onChange={(e) => setDose(p, { dose: e.target.value })} />
+                          </Labeled>
+                          <Labeled label=" ">
+                            <select className={inputCls} value={d.unit} onChange={(e) => setDose(p, { unit: e.target.value })}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select>
+                          </Labeled>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {chosen.length > 1 && <p className="mt-1 text-sm font-semibold">{t('mixNote', { n: chosen.length })}</p>}
           </div>
           <Labeled label={t('water')}><input className={inputCls} inputMode="decimal" value={water} onChange={(e) => setWater(e.target.value)} /></Labeled>
-          <Labeled label={t('purpose')}><input className={inputCls} value={purpose} onChange={(e) => setPurpose(e.target.value)} /></Labeled>
+          <Labeled label={t('purpose')} hint={ownPurpose === null && autoPurpose ? t('purposeAuto') : undefined}>
+            <textarea className={inputCls} rows={3} value={purpose} placeholder={chosen.length ? t('purposeEmptyPh') : ''} onChange={(e) => setOwnPurpose(e.target.value)} />
+          </Labeled>
+          {ownPurpose !== null && autoPurpose && ownPurpose !== autoPurpose && (
+            <button type="button" className="min-h-10 rounded-md border-2 border-neutral-900 px-2 text-sm font-bold" onClick={() => setOwnPurpose(null)}>↺ {t('purposeReset')}</button>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <Labeled label={t('operator')}><input className={inputCls} value={state.operator.name} onChange={(e) => update({ operator: { ...state.operator, name: e.target.value } })} /></Labeled>
             <Labeled label={t('certificate')}><input className={inputCls} value={state.operator.certificate} onChange={(e) => update({ operator: { ...state.operator, certificate: e.target.value } })} /></Labeled>
@@ -173,32 +221,10 @@ export function Precheck({ ctx, onDone, onCancel }: { ctx: Ctx; onDone: (synced:
         </div>
       </Card>
 
-      <h2 className="pt-1 text-lg font-extrabold">{t('checks')}</h2>
-      <Check checked={!!ticks.bees} onChange={tick('bees')} title={t('ckBees')} warn={p?.beeHazard}>
-        {p?.beeHazard ? <strong>{t('ckBeesHaz')}</strong> : t('ckBeesSafe')}
-      </Check>
-      <Check checked={!!ticks.buffer} onChange={tick('buffer')} title={t('ckBuffer')}>
-        <span className="flex items-center gap-3">
-          <span className="shrink-0"><FieldMap field={null} windFrom={windFrom} lang={lang} size={128} /></span>
-          <span>
-            {windFrom === null ? t('windUnknown') : t('ckBufferHint', { dir: compass((windFrom + 180) % 360, lang) })}
-          </span>
-        </span>
-      </Check>
-      <Check checked={!!ticks.nozzle} onChange={tick('nozzle')} title={t('ckNozzle')}>
-        <select className={`${inputCls} mt-1`} value={state.nozzle} onClick={(e) => e.preventDefault()} onChange={(e) => update({ nozzle: e.target.value })}>
-          <option value="">{t('choose')}</option>
-          {NOZZLES.map((n) => <option key={n.id} value={n.id}>{n[lang]}</option>)}
-        </select>
-      </Check>
-      <Check checked={!!ticks.sprayer} onChange={tick('sprayer')} title={t('ckSprayer')} />
-      <Check checked={!!ticks.cert} onChange={tick('cert')} title={t('ckCert')} />
-      <Check checked={!!ticks.soil} onChange={tick('soil')} title={t('ckSoil')} />
-      {red && <Check checked={!!ticks.override} onChange={tick('override')} title={t('ckOverride')} warn />}
-
-      <Labeled label={t('notes')}><textarea className={inputCls} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></Labeled>
-      {!ready && <div className="text-sm font-semibold text-neutral-700">{t('needAll')}</div>}
+      <Labeled label={t('notes')}><textarea className={inputCls} rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></Labeled>
+      {!ready && <div className="text-sm font-semibold text-neutral-700">{chosen.length === 0 ? t('needProduct') : missingDose ? t('needDose') : selFields.length === 0 ? t('pickFields') : ''}</div>}
       <Btn className="w-full !min-h-14 text-lg" disabled={!ready || saving} onClick={save}>{t('start')}</Btn>
+      {info && <ProductInfo ctx={ctx} p={info} onClose={() => setInfo(null)} />}
     </div>
   );
 }
