@@ -127,6 +127,12 @@ export interface Conditions {
   sun: { isNight: boolean; nearSunriseOrSunset: boolean; sunrise: string | null; sunset: string | null };
 }
 
+export interface ActiveSubstance {
+  name: string;
+  /** As on the label, e.g. "750 g/l". */
+  amount: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -140,6 +146,9 @@ export interface Product {
   bbchMax: number | null;
   regNumber?: string;
   defaultDose?: string;
+  activeSubstances?: ActiveSubstance[];
+  /** Weeds / pests / diseases the product controls, as on the label. */
+  spectrum?: string[];
 }
 
 export interface CropSelection {

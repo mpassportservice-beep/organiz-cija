@@ -172,3 +172,23 @@ describe('chosen location', () => {
     expect(assembleSnapshot({ ...farm, lat: 57.315, lon: 25.355 }).forecast.slots).toHaveLength(1);
   });
 });
+
+describe('tank mix in exports', () => {
+  it('CSV lists every product\'s active substances and the joined doses', () => {
+    const csv = logsToCsv([{
+      id: 'm1', startedAt: '2026-05-20T06:00:00.000Z', field: { id: 'f', name: 'L1', areaHa: 1 }, crop: { id: null, name: '', bbch: null },
+      product: { name: 'MCPA 750 + Centurion Plus', regNumber: '', beeHazard: false, phiDays: 60 },
+      products: [
+        { name: 'MCPA 750', regNumber: '', dose: '1', doseUnit: 'l/ha', activeSubstances: [{ name: 'MCPA', amount: '750 g/l' }] },
+        { name: 'Centurion Plus', regNumber: '', dose: '0,8', doseUnit: 'l/ha', activeSubstances: [{ name: 'kletodims', amount: '120 g/l' }] },
+      ],
+      dose: '1 l/ha + 0,8 l/ha', doseUnit: '', waterLHa: '', purpose: 'balanda, vārpata', earliestHarvest: null,
+      operator: { name: '', certificate: '' }, nozzle: '', flag: 'green', flagReason: '', checks: [], weather: [], prechecks: [], notes: '',
+    }], 'lv');
+    const [head, line] = csv.split('\r\n');
+    expect(head).toContain('Darbīgās vielas');
+    expect(line).toContain('MCPA 750 + Centurion Plus');
+    expect(line).toContain('1 l/ha + 0,8 l/ha');
+    expect(line).toContain('MCPA 750 g/l; kletodims 120 g/l');
+  });
+});

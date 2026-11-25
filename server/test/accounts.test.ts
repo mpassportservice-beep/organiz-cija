@@ -162,7 +162,7 @@ describe('accounts and farms', () => {
   it('settings are saved per farm', () => {
     const a = signIn('google', 'g1', 'a@x.lv', '');
     const f = currentFarmOf(a)!.id;
-    saveFarmState(f, { ...defaultState(), selectedProductId: 'p1' });
-    expect(farmState(f).selectedProductId).toBe('p1');
+    saveFarmState(f, { ...defaultState(), selectedProductIds: ['p1'] });
+    expect(farmState(f).selectedProductIds).toEqual(['p1']);
   });
 });

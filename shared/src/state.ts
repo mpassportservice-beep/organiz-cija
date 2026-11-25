@@ -1,5 +1,6 @@
 import { mergeThresholds, type Thresholds } from './config';
 import { inLatvia } from './latvia';
+import { combineProducts } from './products';
 import type { CropSelection, Lang, Product, Reading } from './types';
 
 /** 8 compass sectors (0 = N, clockwise) in which a sensitive object lies, seen from the field. */
@@ -42,7 +43,8 @@ export interface AppState {
   lang: Lang;
   thresholds: Partial<Thresholds>;
   products: Product[];
-  selectedProductId: string | null;
+  /** Products sprayed together (tank mix); empty = default limits. */
+  selectedProductIds: string[];
   fields: Field[];
   selectedFieldId: string | null;
   groups: FieldGroup[];
@@ -69,7 +71,7 @@ export function defaultState(): AppState {
     lang: 'lv',
     thresholds: {},
     products: [],
-    selectedProductId: null,
+    selectedProductIds: [],
     fields: [{ id: 'f1', name: 'Lauks 1', areaHa: null, cropId: null, bbch: null, water: [], neighbours: [], hives: [] }],
     selectedFieldId: 'f1',
     groups: [],
@@ -90,6 +92,10 @@ export function normalizeState(raw: unknown): AppState {
     version: 1,
     thresholds: s.thresholds ?? {},
     products: Array.isArray(s.products) ? s.products : [],
+    // Older saves (and phones still on the old version) hold a single selectedProductId.
+    selectedProductIds: Array.isArray(s.selectedProductIds)
+      ? s.selectedProductIds.filter((x): x is string => typeof x === 'string')
+      : typeof (raw as { selectedProductId?: unknown }).selectedProductId === 'string' ? [(raw as { selectedProductId: string }).selectedProductId] : [],
     fields: Array.isArray(s.fields) && s.fields.length ? s.fields : d.fields,
     groups: Array.isArray(s.groups) ? s.groups : [],
     selectedGroupId: typeof s.selectedGroupId === 'string' ? s.selectedGroupId : null,
@@ -100,8 +106,9 @@ export function normalizeState(raw: unknown): AppState {
 
 /** What the rules engine needs out of the saved settings. */
 export function ruleContext(s: AppState): {
-  thresholds: Thresholds; product: Product | null; field: Field | null; crop: CropSelection; group: FieldGroup | null; targetFields: Field[];
+  thresholds: Thresholds; product: Product | null; products: Product[]; field: Field | null; crop: CropSelection; group: FieldGroup | null; targetFields: Field[];
 } {
+  const products = s.selectedProductIds.map((id) => s.products.find((p) => p.id === id)).filter((p): p is Product => !!p);
   const group = s.groups.find((g) => g.id === s.selectedGroupId) ?? null;
   const groupFields = group ? s.fields.filter((f) => group.fieldIds.includes(f.id)) : [];
   const field = groupFields[0] ?? s.fields.find((f) => f.id === s.selectedFieldId) ?? s.fields[0] ?? null;
@@ -109,7 +116,8 @@ export function ruleContext(s: AppState): {
     group: groupFields.length ? group : null,
     targetFields: groupFields.length ? groupFields : field ? [field] : [],
     thresholds: mergeThresholds(s.thresholds),
-    product: s.products.find((p) => p.id === s.selectedProductId) ?? null,
+    products,
+    product: combineProducts(products),
     field,
     crop: { cropId: field?.cropId ?? null, bbch: field?.bbch ?? null },
   };
@@ -133,6 +141,14 @@ export function readingKind(r: Reading): WeatherSnapshotItem['kind'] {
   return r.isForecast ? 'forecast' : 'observation';
 }
 
+export interface LoggedProduct {
+  name: string;
+  regNumber: string;
+  dose: string;
+  doseUnit: string;
+  activeSubstances: { name: string; amount: string }[];
+}
+
 /** One spraying record. Structured to carry what a plant protection product usage register needs. */
 export interface LogRecord {
   id: string;
@@ -140,9 +156,13 @@ export interface LogRecord {
   endedAt?: string | null;
   field: { id: string; name: string; areaHa: number | null };
   crop: { id: string | null; name: string; bbch: number | null };
+  /** The whole tank mix as one entry ("A + B"); limits combined. Kept for exports and older records. */
   product: { name: string; regNumber: string; beeHazard: boolean; phiDays: number | null };
+  /** For a single product the dose; for a mix the doses joined ("1 l/ha + 0.5 l/ha" goes into dose). */
   dose: string;
   doseUnit: string;
+  /** Each product of the mix with its own dose. Records made before mixes existed do not have it. */
+  products?: LoggedProduct[];
   waterLHa: string;
   purpose: string;
   earliestHarvest: string | null;
