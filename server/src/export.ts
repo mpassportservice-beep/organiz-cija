@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import PDFDocument from 'pdfkit';
-import type { Lang, LogRecord } from '@spray/shared';
+import { durationMin, type Lang, type LogRecord } from '@spray/shared';
 import { currentFarm } from './farm';
 
 const require = createRequire(import.meta.url);
@@ -18,17 +18,17 @@ function local(iso: string | null | undefined): { date: string; time: string } {
 
 const T = {
   lv: {
-    title: 'Augu aizsardzības līdzekļu lietošanas uzskaite', date: 'Datums', start: 'Sākums', end: 'Beigas', field: 'Lauks', area: 'Platība, ha',
+    title: 'Augu aizsardzības līdzekļu lietošanas uzskaite', date: 'Datums', start: 'Sākums', end: 'Beigas', duration: 'Ilgums, min', field: 'Lauks', area: 'Platība, ha',
     crop: 'Kultūraugs', bbch: 'BBCH', product: 'AAL nosaukums', reg: 'Reģ. Nr.', dose: 'Deva', unit: 'Devas mērv.', water: 'Darba šķidrums, l/ha',
     purpose: 'Kaitīgais organisms / mērķis', bee: 'Bīstams bitēm', phi: 'Nogaidīšanas laiks, d', harvest: 'Agrākā raža', operator: 'Operators',
-    cert: 'Apliecības Nr.', nozzle: 'Sprauslas', flag: 'Karogs', reason: 'Iemesls', prechecks: 'Pārbaudes', notes: 'Piezīmes', batch: 'Smidzināts kopā ar', subs: 'Darbīgās vielas', weather: 'Laikapstākļi sākumā',
+    cert: 'Apliecības Nr.', nozzle: 'Sprauslas', flag: 'Karogs', reason: 'Iemesls', prechecks: 'Pārbaudes', notes: 'Piezīmes', batch: 'Smidzināts kopā ar', subs: 'Darbīgās vielas', weather: 'Laikapstākļi sākumā', weatherEnd: 'Laikapstākļi beigās',
     yes: 'Jā', no: 'Nē', generated: 'Sagatavots', value: 'vērtība', source: 'avots', station: 'stacija', km: 'km', at: 'laiks', kind: 'veids', none: 'Nav ierakstu',
   },
   en: {
-    title: 'Plant protection product usage record', date: 'Date', start: 'Start', end: 'End', field: 'Field', area: 'Area, ha',
+    title: 'Plant protection product usage record', date: 'Date', start: 'Start', end: 'End', duration: 'Duration, min', field: 'Field', area: 'Area, ha',
     crop: 'Crop', bbch: 'BBCH', product: 'Product', reg: 'Reg. no.', dose: 'Dose', unit: 'Dose unit', water: 'Spray volume, l/ha',
     purpose: 'Target organism / purpose', bee: 'Bee-hazardous', phi: 'Pre-harvest interval, d', harvest: 'Earliest harvest', operator: 'Operator',
-    cert: 'Certificate no.', nozzle: 'Nozzles', flag: 'Flag', reason: 'Reason', prechecks: 'Pre-checks', notes: 'Notes', batch: 'Sprayed together with', subs: 'Active substances', weather: 'Weather at start',
+    cert: 'Certificate no.', nozzle: 'Nozzles', flag: 'Flag', reason: 'Reason', prechecks: 'Pre-checks', notes: 'Notes', batch: 'Sprayed together with', subs: 'Active substances', weather: 'Weather at start', weatherEnd: 'Weather at end',
     yes: 'Yes', no: 'No', generated: 'Generated', value: 'value', source: 'source', station: 'station', km: 'km', at: 'time', kind: 'kind', none: 'No records',
   },
 } as const;
@@ -54,14 +54,14 @@ function csvCell(v: unknown): string {
 /** Semicolon-separated, UTF-8 with BOM (opens correctly in Excel with Latvian regional settings). One row per treatment. */
 export function logsToCsv(records: LogRecord[], lang: Lang): string {
   const t = T[lang];
-  const head: string[] = [t.date, t.start, t.end, t.field, t.area, t.crop, t.bbch, t.product, t.reg, t.dose, t.unit, t.water, t.purpose,
-    t.bee, t.phi, t.harvest, t.operator, t.cert, t.nozzle, t.flag, t.reason, t.prechecks, t.notes, t.batch, t.subs];
+  const head: string[] = [t.date, t.start, t.end, t.duration, t.field, t.area, t.crop, t.bbch, t.product, t.reg, t.dose, t.unit, t.water, t.purpose,
+    t.operator, t.cert, t.nozzle, t.flag, t.reason, t.prechecks, t.notes, t.batch, t.subs];
   for (const k of WEATHER_KEYS) head.push(`${k} ${t.value}`, `${k} ${t.source}`, `${k} ${t.station}`, `${k} ${t.km}`, `${k} ${t.at}`, `${k} ${t.kind}`);
   head.push('id', 'started_at_utc');
   const rows = records.map((r) => {
     const s = local(r.startedAt);
-    const row: unknown[] = [s.date, s.time, local(r.endedAt).time, r.field.name, r.field.areaHa, r.crop.name, r.crop.bbch, r.product.name,
-      r.product.regNumber, r.dose, r.doseUnit, r.waterLHa, r.purpose, r.product.beeHazard ? t.yes : t.no, r.product.phiDays, r.earliestHarvest,
+    const row: unknown[] = [s.date, s.time, local(r.endedAt).time, durationMin(r), r.field.name, r.field.areaHa, r.crop.name, r.crop.bbch, r.product.name,
+      r.product.regNumber, r.dose, r.doseUnit, r.waterLHa, r.purpose,
       r.operator.name, r.operator.certificate, r.nozzle, r.flag, r.flagReason,
       r.prechecks.map((p) => `${p.checked ? '[x]' : '[ ]'} ${p.label}`).join(' | '), r.notes, batchText(r), substancesText(r)];
     for (const k of WEATHER_KEYS) {
@@ -115,19 +115,23 @@ export function logsToPdf(records: LogRecord[], lang: Lang): Promise<Buffer> {
       }
       kv(t.purpose, r.purpose);
       if (r.batch && r.batch.fields.length > 1) kv(t.batch, batchText(r));
-      kv(t.bee, r.product.beeHazard ? t.yes : t.no);
-      kv(t.phi, r.product.phiDays !== null ? `${r.product.phiDays}${r.earliestHarvest ? ` → ${t.harvest}: ${r.earliestHarvest}` : ''}` : null);
       kv(t.operator, `${r.operator.name}${r.operator.certificate ? ` · ${t.cert} ${r.operator.certificate}` : ''}`);
       kv(t.nozzle, r.nozzle);
       kv(t.flag, `${r.flag.toUpperCase()} – ${r.flagReason}`);
       if (r.prechecks.length) kv(t.prechecks, r.prechecks.map((p) => `${p.checked ? '☑' : '☐'} ${p.label}`).join('   '));
       kv(t.notes, r.notes);
-      doc.moveDown(0.3).font('b').fontSize(9).text(t.weather);
-      doc.font('r').fontSize(7.5);
-      for (const w of r.weather) {
-        const wt = local(w.time);
-        doc.text(`${w.label}: ${w.value}${w.unit ? ' ' + w.unit : ''}  —  ${w.source}${w.station ? ', ' + w.station : ''}${w.distanceKm !== null ? `, ${w.distanceKm} km` : ''}, ${wt.date} ${wt.time} [${w.kind}]`, { width: W });
-      }
+      const d = durationMin(r);
+      if (d !== null) kv(t.duration, d);
+      const weatherBlock = (title: string, items: LogRecord['weather']) => {
+        doc.moveDown(0.3).font('b').fontSize(9).text(title);
+        doc.font('r').fontSize(7.5);
+        for (const w of items) {
+          const wt = local(w.time);
+          doc.text(`${w.label}: ${w.value}${w.unit ? ' ' + w.unit : ''}  —  ${w.source}${w.station ? ', ' + w.station : ''}${w.distanceKm !== null ? `, ${w.distanceKm} km` : ''}, ${wt.date} ${wt.time} [${w.kind}]`, { width: W });
+        }
+      };
+      weatherBlock(t.weather, r.weather);
+      if (r.weatherEnd?.length) weatherBlock(t.weatherEnd, r.weatherEnd);
       doc.moveDown(1);
     }
     doc.end();

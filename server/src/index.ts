@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
-import { normalizeState, type AppState, type Lang, type LogRecord } from '@spray/shared';
+import { isActive, normalizeState, type AppState, type Lang, type LogRecord } from '@spray/shared';
 import { config } from './config';
-import { kvGet, kvSet, logInsert, logList } from './db';
+import { kvGet, kvSet, logDeleteActive, logInsert, logList } from './db';
 import { logsToCsv, logsToPdf } from './export';
 import { notifyGreenWindow, sendTest, subscribe, unsubscribe, vapidPublicKey } from './push';
 import { currentSnapshot, locationChanged, msSinceLastRun, refreshAll } from './weather';
@@ -40,13 +40,17 @@ app.post('/api/logs', async (req, reply) => {
   logInsert(r);
   return { ok: true, id: r.id };
 });
+app.delete('/api/logs/:id', async (req, reply) => {
+  if (!logDeleteActive(String((req.params as { id: string }).id))) return reply.code(409).send({ error: 'Only a running spraying can be cancelled' });
+  return { ok: true };
+});
 app.get('/api/logs.csv', async (req, reply) => {
   reply.header('content-type', 'text/csv; charset=utf-8').header('content-disposition', 'attachment; filename="aal-uzskaite.csv"');
-  return logsToCsv(logList(), langOf(req.query));
+  return logsToCsv(logList().filter((r) => !isActive(r)), langOf(req.query));
 });
 app.get('/api/logs.pdf', async (req, reply) => {
   reply.header('content-type', 'application/pdf').header('content-disposition', 'attachment; filename="aal-uzskaite.pdf"');
-  return logsToPdf(logList(), langOf(req.query));
+  return logsToPdf(logList().filter((r) => !isActive(r)), langOf(req.query));
 });
 
 app.get('/api/push/key', async () => ({ key: vapidPublicKey }));

@@ -140,7 +140,8 @@ export function useLogs() {
 
   const add = useCallback(async (recs: LogRecord | LogRecord[]): Promise<boolean> => {
     const list = Array.isArray(recs) ? recs : [recs];
-    const q = [...(read<LogRecord[]>(LS.queue) ?? []), ...list];
+    // A newer version of the same record (e.g. finished) replaces the queued one.
+    const q = [...(read<LogRecord[]>(LS.queue) ?? []).filter((x) => !list.some((r) => r.id === x.id)), ...list];
     write(LS.queue, q);
     setQueue(q);
     await sync();
@@ -148,9 +149,26 @@ export function useLogs() {
     return !list.some((r) => left.some((x) => x.id === r.id));
   }, [sync]);
 
+  /** Cancel a running spraying (needs a connection; finished records cannot be deleted). */
+  const remove = useCallback(async (ids: string[]): Promise<boolean> => {
+    try {
+      for (const id of ids) {
+        const queued = (read<LogRecord[]>(LS.queue) ?? []).filter((x) => x.id !== id);
+        write(LS.queue, queued);
+        setQueue(queued);
+        await api(`/api/logs/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch((e: Error) => {
+          if (!/HTTP 409/.test(e.message)) throw e; // never reached the server: nothing to delete there
+        });
+      }
+      await sync();
+      return true;
+    } catch { return false; }
+  }, [sync]);
+
   const pending = new Set(queue.map((q) => q.id));
-  const all = [...queue.filter((q) => !logs.some((l) => l.id === q.id)), ...logs].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-  return { logs: all, pending, add };
+  // The phone's queued version is newer than what the server last sent.
+  const all = [...queue, ...logs.filter((l) => !pending.has(l.id))].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  return { logs: all, pending, add, remove };
 }
 
 /** Re-render every 30 s so "x min ago" and staleness move without new data. */

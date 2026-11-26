@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   BBCH_STAGES, CHECK_LABELS, CROPS, FLAG_LABELS, compass, formatReason, type CheckResult, type Product, type Reading,
 } from '@spray/shared';
 import type { Ctx } from '../App';
 import { explain } from '../explain';
 import { ProductInfo, ProductPicker } from './ProductInfo';
+import { activeGroups } from './Log';
+import { pushCurrent, pushEnable, pushSupported } from '../data';
+import { DEMO } from '../demo';
 import { ago, Btn, fmtTime, inputCls, Labeled, NumInput, SourceLine, STATUS_BG, StatusIcon, WindArrow } from '../ui';
 
 const FLAG_HEX = { green: '#15803d', amber: '#fbbf24', red: '#b91c1c' } as const;
@@ -156,11 +159,56 @@ function CropSheet({ ctx, onClose }: { ctx: Ctx; onClose: () => void }) {
   );
 }
 
+const DISMISS_KEY = 'spray.notifPromptHiddenUntil';
+const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const standalone = () => window.matchMedia?.('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
+
+/** Offer phone notifications for green windows until they are on (or the user says "later" – asked again in 14 days). */
+function NotifPrompt({ ctx }: { ctx: Ctx }) {
+  const { t, lang } = ctx;
+  const [show, setShow] = useState(false);
+  const [msg, setMsg] = useState('');
+  const ios = isIos() && !standalone();
+  useEffect(() => {
+    if (DEMO) return;
+    let hidden = false;
+    try { hidden = Number(localStorage.getItem(DISMISS_KEY) ?? 0) > Date.now(); } catch { /* ignore */ }
+    if (hidden) return;
+    if (ios) { setShow(true); return; }
+    if (!pushSupported() || Notification.permission === 'denied') return;
+    void pushCurrent().then((sub) => setShow(!sub));
+  }, [ios]);
+  if (!show) return null;
+  const later = () => { try { localStorage.setItem(DISMISS_KEY, String(Date.now() + 14 * 86_400_000)); } catch { /* ignore */ } setShow(false); };
+  return (
+    <section className="rounded-xl border-2 border-neutral-900 bg-white p-3">
+      <div className="flex items-start gap-3">
+        <span className="text-3xl leading-none" aria-hidden>🔔</span>
+        <div className="min-w-0">
+          <h2 className="font-extrabold">{t('notifPromptTitle')}</h2>
+          <p className="text-sm">{ios ? t('notifIos') : t('notifPromptBody')}</p>
+        </div>
+      </div>
+      {msg && <p className="mt-2 text-sm font-bold">{msg}</p>}
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <Btn kind="ghost" onClick={later}>{t('notifPromptLater')}</Btn>
+        {!ios && (
+          <Btn onClick={async () => {
+            const r = await pushEnable(lang);
+            if (r === 'ok') { setMsg(t('notifOn')); setTimeout(() => setShow(false), 2500); } else setMsg(r === 'denied' ? t('notifDenied') : t('notifFailed'));
+          }}>{t('notifEnable')}</Btn>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function Main({ ctx, onStart }: { ctx: Ctx; onStart: () => void }) {
   const { t, lang, state, update, snapshot, evaluation: ev, offline, busy, refresh, now } = ctx;
   const [cropOpen, setCropOpen] = useState(false);
   const [info, setInfo] = useState<CheckResult['id'] | null>(null);
   const [picker, setPicker] = useState(false);
+  const running = activeGroups(ctx.logs);
   const [infoProduct, setInfoProduct] = useState<Product | null>(null);
   const infoCheck = info && ev ? ev.checks.find((c) => c.id === info) ?? null : null;
   // Crop stage only matters on the main screen when the chosen product limits the BBCH stage.
@@ -208,6 +256,15 @@ export function Main({ ctx, onStart }: { ctx: Ctx; onStart: () => void }) {
         </ul>
       )}
 
+      {running.length > 0 && (
+        <button onClick={ctx.openLog} className="flex min-h-14 w-full items-center justify-between gap-2 rounded-xl border-[3px] border-go bg-green-50 px-3 text-left font-black">
+          <span className="flex items-center gap-2">
+            <span className="relative flex h-3 w-3"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-go opacity-75" /><span className="relative inline-flex h-3 w-3 rounded-full bg-go" /></span>
+            {t('sprayBanner', { n: running.map((g) => g.filter((r) => r.status === 'active').map((r) => r.field.name).join(', ')).join(' · ') })}
+          </span>
+          <span className="shrink-0 underline">{t('sprayBannerOpen')} →</span>
+        </button>
+      )}
       {offline && <div className="rounded-lg bg-neutral-950 px-3 py-2 text-sm font-bold text-white">⚠ {t('offline')}</div>}
       {!offline && snapshot && ageMin > 25 && <div className="rounded-lg bg-neutral-950 px-3 py-2 text-sm font-bold text-white">⚠ {t('oldData', { min: ageMin })}</div>}
 
@@ -240,6 +297,7 @@ export function Main({ ctx, onStart }: { ctx: Ctx; onStart: () => void }) {
           </ul>
 
           <Btn className="w-full !min-h-14 text-lg" onClick={onStart}>{t('start')} →</Btn>
+          <NotifPrompt ctx={ctx} />
         </>
       )}
       {cropOpen && <CropSheet ctx={ctx} onClose={() => setCropOpen(false)} />}

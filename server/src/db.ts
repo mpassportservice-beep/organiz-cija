@@ -48,6 +48,13 @@ export function sourceFail(source: string, error: string): void {
 export function logInsert(rec: LogRecord): void {
   db.prepare('INSERT OR REPLACE INTO logs (id, started_at, record) VALUES (?, ?, ?)').run(rec.id, rec.startedAt, JSON.stringify(rec));
 }
+/** Delete a record that is still running (a spraying that was cancelled). Finished records are never deleted. */
+export function logDeleteActive(id: string): boolean {
+  const row = db.prepare('SELECT record FROM logs WHERE id = ?').get(id) as { record: string } | undefined;
+  if (!row || (JSON.parse(row.record) as LogRecord).status !== 'active') return false;
+  db.prepare('DELETE FROM logs WHERE id = ?').run(id);
+  return true;
+}
 export function logList(): LogRecord[] {
   return (db.prepare('SELECT record FROM logs ORDER BY started_at DESC').all() as { record: string }[]).map((r) => JSON.parse(r.record));
 }

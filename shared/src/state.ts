@@ -176,4 +176,20 @@ export interface LogRecord {
   notes: string;
   /** Records made in one pass over several fields share a batch id and list all fields of the pass. */
   batch?: { id: string; group: string | null; fields: string[] } | null;
+  /**
+   * "active" from "Sākt smidzināšanu" until the operator presses "Pabeigts" for this field; only "done" records
+   * count in exports. Records from before this existed have no status and count as done.
+   */
+  status?: 'active' | 'done';
+  /** Weather when the field was finished. */
+  weatherEnd?: WeatherSnapshotItem[];
+}
+
+export const isActive = (r: LogRecord) => r.status === 'active';
+
+/** Minutes from start to finish, null while still running. */
+export function durationMin(r: LogRecord): number | null {
+  if (!r.endedAt) return null;
+  const d = Date.parse(r.endedAt) - Date.parse(r.startedAt);
+  return Number.isFinite(d) && d >= 0 ? Math.round(d / 60_000) : null;
 }

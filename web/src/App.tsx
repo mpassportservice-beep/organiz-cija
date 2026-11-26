@@ -20,7 +20,8 @@ export interface Ctx {
   snapshot: Snapshot | null; offline: boolean; busy: boolean; refresh: () => void; locPending: boolean;
   rule: ReturnType<typeof ruleContext>;
   conditions: Conditions | null; evaluation: Evaluation | null; timeline: TimelineSlot[]; best: Window | null;
-  logs: LogRecord[]; pendingLogs: Set<string>; addLog: (r: LogRecord | LogRecord[]) => Promise<boolean>;
+  logs: LogRecord[]; pendingLogs: Set<string>; addLog: (r: LogRecord | LogRecord[]) => Promise<boolean>; removeLogs: (ids: string[]) => Promise<boolean>;
+  openLog: () => void;
 }
 
 type Tab = 'now' | 'products' | 'log' | 'settings' | 'precheck';
@@ -29,7 +30,7 @@ export function App() {
   const { state, update, saveNow } = useAppState();
   const [locOpen, setLocOpen] = useState(false);
   const { snapshot, offline, busy, refresh } = useSnapshot();
-  const { logs, pending, add } = useLogs();
+  const { logs, pending, add, remove } = useLogs();
   const now = useNow();
   const [tab, setTab] = useState<Tab>('now');
   const [toast, setToast] = useState('');
@@ -71,10 +72,10 @@ export function App() {
     refresh();
   };
 
-  const ctx: Ctx = { lang, t, now, state, update, snapshot: locPending ? null : snapshot, offline, busy: busy || locPending, refresh, locPending, ...derived, logs, pendingLogs: pending, addLog: add };
+  const ctx: Ctx = { lang, t, now, state, update, snapshot: locPending ? null : snapshot, offline, busy: busy || locPending, refresh, locPending, ...derived, logs, pendingLogs: pending, addLog: add, removeLogs: remove, openLog: () => setTab('log') };
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: 'now', label: t('tabNow'), icon: '◉' }, { id: 'products', label: t('tabProducts'), icon: '⚗' },
-    { id: 'log', label: t('tabLog'), icon: '☰' }, { id: 'settings', label: t('tabSettings'), icon: '⚙' },
+    { id: 'log', label: t('tabLog'), icon: '📚' }, { id: 'settings', label: t('tabSettings'), icon: '⚙' },
   ];
 
   return (
@@ -112,7 +113,7 @@ export function App() {
       )}
       <main className="flex-1">
         {tab === 'now' && <Main ctx={ctx} onStart={() => setTab('precheck')} />}
-        {tab === 'precheck' && <Precheck ctx={ctx} onCancel={() => setTab('now')} onDone={(synced, n) => { setToast(n > 1 ? t(synced ? 'savedMany' : 'savedManyOffline', { n }) : synced ? t('saved') : t('savedOffline')); setTab('log'); }} />}
+        {tab === 'precheck' && <Precheck ctx={ctx} onCancel={() => setTab('now')} onDone={(synced) => { setToast(synced ? t('sprayStarted') : t('sprayStartedOffline')); setTab('log'); }} />}
         {tab === 'products' && <Products ctx={ctx} />}
         {tab === 'log' && <Log ctx={ctx} />}
         {tab === 'settings' && <Settings ctx={ctx} />}

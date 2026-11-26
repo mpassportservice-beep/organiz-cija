@@ -32,10 +32,14 @@ async function send(row: { endpoint: string; sub: string }, payload: object): Pr
 
 const hhmm = (iso: string) => new Intl.DateTimeFormat('lv-LV', { timeZone: 'Europe/Riga', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
 
-export function windowMessage(start: string, end: string, lang: Lang) {
+const rigaDay = (ms: number) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Riga' }).format(new Date(ms));
+
+/** "Zaļais logs atveras 18:30 (līdz 21:15)"; "rīt 06:30" when it opens after midnight. */
+export function windowMessage(start: string, end: string, lang: Lang, now = Date.now()) {
+  const tomorrow = rigaDay(Date.parse(start)) !== rigaDay(now);
   return lang === 'lv'
-    ? { title: 'Smidzināšanas logs', body: `Zaļais logs atveras ${hhmm(start)} (līdz ${hhmm(end)})` }
-    : { title: 'Spray window', body: `A green window opens at ${hhmm(start)} (until ${hhmm(end)})` };
+    ? { title: 'Smidzināšanas logs', body: `Zaļais logs atveras ${tomorrow ? 'rīt ' : ''}${hhmm(start)} (līdz ${hhmm(end)})` }
+    : { title: 'Spray window', body: `A green window opens ${tomorrow ? 'tomorrow ' : ''}at ${hhmm(start)} (until ${hhmm(end)})` };
 }
 
 /** After every fetch: if it is not green now and a ≥ 1 h green window lies ahead, tell each subscriber once per window. */
@@ -50,7 +54,7 @@ export async function notifyGreenWindow(snap: Snapshot): Promise<number> {
   for (const row of rows) {
     // Same window if its start moved by less than an hour between forecast runs.
     if (row.last_window && Math.abs(Date.parse(row.last_window) - Date.parse(w.start)) < 3600_000) continue;
-    if (await send(row, { ...windowMessage(w.start, w.end, row.lang as Lang), tag: 'green-window', url: '/' })) {
+    if (await send(row, { ...windowMessage(w.start, w.end, row.lang as Lang), tag: 'green-window', url: '/', lang: row.lang })) {
       db.prepare('UPDATE push_subs SET last_window = ? WHERE endpoint = ?').run(w.start, row.endpoint);
       sent++;
     }

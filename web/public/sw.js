@@ -1,6 +1,6 @@
 /* Smidzināšanas logs service worker: app-shell cache for offline use + push notifications.
    Weather data is NOT cached here – the app keeps the last snapshot itself and labels it as offline. */
-const CACHE = 'spray-shell-v1';
+const CACHE = 'spray-shell-v2';
 const SHELL = ['/', '/manifest.webmanifest', '/icon.svg', '/icon-192.png'];
 
 self.addEventListener('install', (e) => {
@@ -36,13 +36,16 @@ self.addEventListener('fetch', (e) => {
 self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (_) { /* ignore */ }
+  // Looks like any app notification: app icon, a white silhouette in the Android status bar, a short buzz.
   e.waitUntil(self.registration.showNotification(d.title || 'Smidzināšanas logs', {
-    body: d.body || '', tag: d.tag || 'spray', icon: '/icon-192.png', badge: '/icon-192.png', data: { url: d.url || '/' },
+    body: d.body || '', tag: d.tag || 'spray', renotify: true, lang: d.lang || 'lv',
+    icon: '/icon-192.png', badge: '/badge-96.png', vibrate: [200, 100, 200], timestamp: Date.now(),
+    data: { url: d.url || '/' },
   }));
 });
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
-  e.waitUntil(self.clients.matchAll({ type: 'window' }).then((list) => {
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
     for (const c of list) if ('focus' in c) return c.focus();
     return self.clients.openWindow((e.notification.data && e.notification.data.url) || '/');
   }));

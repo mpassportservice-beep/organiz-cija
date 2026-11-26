@@ -36,13 +36,11 @@ export function ProductInfo({ ctx, p, onClose, onEdit }: { ctx: Ctx; p: Product;
     p.rainFreeHours !== null ? `${t('pRain')}: ${p.rainFreeHours} h` : null,
     p.maxWind !== null ? `${t('pWind')}: ${p.maxWind} m/s` : null,
     p.bbchMin !== null || p.bbchMax !== null ? `BBCH ${p.bbchMin ?? 0}–${p.bbchMax ?? 99}` : null,
-    p.phiDays !== null ? `${t('pPhi')}: ${p.phiDays}` : null,
     p.defaultDose ? `${t('pDoseShort')}: ${p.defaultDose}` : null,
   ].filter(Boolean);
   return (
     <Sheet title={p.name} onClose={onClose} closeLabel={t('close')}>
       {p.regNumber && <p className="mt-1 text-sm font-semibold text-neutral-700">{t('pReg')}: {p.regNumber}</p>}
-      {p.beeHazard && <p className="mt-2 inline-block rounded bg-stop px-2 py-1 text-sm font-bold text-white">⚠ {t('bee')}</p>}
 
       <h3 className="mt-4 text-base font-extrabold">{t('pSubstances')}</h3>
       {subs.length ? (

@@ -48,12 +48,7 @@ function Editor({ ctx, initial, onClose }: { ctx: Ctx; initial: Product; onClose
           <Labeled label={t('pBbchMin')}><NumInput value={p.bbchMin} step="1" onChange={(v) => set({ bbchMin: v })} /></Labeled>
           <Labeled label={t('pBbchMax')}><NumInput value={p.bbchMax} step="1" onChange={(v) => set({ bbchMax: v })} /></Labeled>
         </div>
-        <Labeled label={t('pPhi')}><NumInput value={p.phiDays} step="1" onChange={(v) => set({ phiDays: v })} /></Labeled>
         <Labeled label={t('pDose')}><input className={inputCls} value={p.defaultDose ?? ''} onChange={(e) => set({ defaultDose: e.target.value })} /></Labeled>
-        <label className="flex min-h-12 items-center gap-3 rounded-lg border-2 border-neutral-900 px-3">
-          <input type="checkbox" className="h-7 w-7 accent-red-700" checked={p.beeHazard} onChange={(e) => set({ beeHazard: e.target.checked })} />
-          <span className="font-bold">{t('pBee')}</span>
-        </label>
         <div className="flex gap-2">
           <Btn type="submit" className="flex-1">{t('save')}</Btn>
           <Btn kind="ghost" onClick={onClose}>{t('cancel')}</Btn>
@@ -87,7 +82,6 @@ export function Products({ ctx }: { ctx: Ctx }) {
           p.rainFreeHours !== null ? `${p.rainFreeHours} h ☂` : null,
           p.maxWind !== null ? `≤ ${p.maxWind} m/s` : null,
           p.bbchMin !== null || p.bbchMax !== null ? `BBCH ${p.bbchMin ?? 0}–${p.bbchMax ?? 99}` : null,
-          p.phiDays !== null ? `${p.phiDays} d` : null,
         ].filter(Boolean);
         return (
           <div key={p.id} className={`rounded-xl border-2 p-3 ${sel ? 'border-go bg-green-50' : 'border-neutral-900'}`}>
@@ -98,7 +92,6 @@ export function Products({ ctx }: { ctx: Ctx }) {
                   <div className="text-sm font-semibold">{p.activeSubstances!.map((x) => (x.amount ? `${x.name} ${x.amount}` : x.name)).join(' + ')}</div>
                 )}
                 <div className="text-sm font-semibold text-neutral-700">{facts.join(' · ') || '—'}</div>
-                {p.beeHazard && <span className="mt-1 inline-block rounded bg-stop px-1.5 py-0.5 text-xs font-bold text-white">⚠ {t('bee')}</span>}
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1">
                 <InfoButton label={`${p.name} – ${t('pInfo')}`} onClick={() => setInfo(p)} />
