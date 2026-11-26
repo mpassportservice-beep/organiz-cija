@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
-import { normalizeState, type AppState, type Lang, type LogRecord, type Snapshot } from '@spray/shared';
+import { isActive, normalizeState, type AppState, type Lang, type LogRecord, type Snapshot } from '@spray/shared';
 import {
   cancelInvite, currentFarmOf, deleteAccount, farmState, farmsOf, invite, members, migrateLegacy, removeMember, renameFarm,
   roleIn, saveFarmState, setRole, signIn, userById, normEmail, createFarm, type FarmRow, type User,
@@ -11,7 +11,7 @@ import {
   createSession, endAllSessions, endSession, newNonce, NONCE_COOKIE, providers, SESSION_COOKIE, sessionUser, useNonce, verifyIdToken,
 } from './auth';
 import { config } from './config';
-import { db, logInsert, logList } from './db';
+import { db, logDeleteActive, logInsert, logList } from './db';
 import { logsToCsv, logsToPdf } from './export';
 import { farmKey, farmLocation, type Farm } from './farm';
 import { farmsWithSubscribers, notifyGreenWindow, sendTest, subscribe, unsubscribe, vapidPublicKey } from './push';
@@ -251,13 +251,17 @@ app.post('/api/logs', signedIn, async (req, reply) => {
   if (!logInsert(req.farm!.id, rec)) return reply.code(409).send({ error: 'Record id in use' });
   return { ok: true, id: r.id };
 });
+app.delete('/api/logs/:id', signedIn, async (req, reply) => {
+  if (!logDeleteActive(req.farm!.id, String((req.params as { id: string }).id))) return reply.code(409).send({ error: 'Only a running spraying can be cancelled' });
+  return { ok: true };
+});
 app.get('/api/logs.csv', signedIn, async (req, reply) => {
   reply.header('content-type', 'text/csv; charset=utf-8').header('content-disposition', 'attachment; filename="aal-uzskaite.csv"');
-  return logsToCsv(logList(req.farm!.id), langOf(req.query));
+  return logsToCsv(logList(req.farm!.id).filter((r) => !isActive(r)), langOf(req.query));
 });
 app.get('/api/logs.pdf', signedIn, async (req, reply) => {
   reply.header('content-type', 'application/pdf').header('content-disposition', 'attachment; filename="aal-uzskaite.pdf"');
-  return logsToPdf(logList(req.farm!.id), langOf(req.query), req.farm!.name);
+  return logsToPdf(logList(req.farm!.id).filter((r) => !isActive(r)), langOf(req.query), req.farm!.name);
 });
 
 app.get('/api/push/key', async () => ({ key: vapidPublicKey }));

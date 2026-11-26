@@ -84,6 +84,13 @@ export function logInsert(farmId: number, rec: LogRecord): boolean {
   db.prepare('INSERT OR REPLACE INTO logs (id, started_at, record, farm_id) VALUES (?, ?, ?, ?)').run(rec.id, rec.startedAt, JSON.stringify(rec), farmId);
   return true;
 }
+/** Delete a running record of this farm (a cancelled spraying). Finished records are never deleted. */
+export function logDeleteActive(farmId: number, id: string): boolean {
+  const row = db.prepare('SELECT record FROM logs WHERE id = ? AND farm_id = ?').get(id, farmId) as { record: string } | undefined;
+  if (!row || (JSON.parse(row.record) as LogRecord).status !== 'active') return false;
+  db.prepare('DELETE FROM logs WHERE id = ? AND farm_id = ?').run(id, farmId);
+  return true;
+}
 export function logList(farmId: number): LogRecord[] {
   return (db.prepare('SELECT record FROM logs WHERE farm_id = ? ORDER BY started_at DESC').all(farmId) as { record: string }[]).map((r) => JSON.parse(r.record));
 }

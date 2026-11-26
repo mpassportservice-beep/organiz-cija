@@ -1,47 +1,15 @@
 import { useState } from 'react';
 import {
-  CHECK_LABELS, CROPS, FLAG_LABELS, deltaT, formatReason, readingKind,
-  combineProducts, spectrumOf, type LogRecord, type LoggedProduct, type Product, type Reading, type WeatherSnapshotItem,
+  CHECK_LABELS, CROPS, FLAG_LABELS, formatReason,
+  combineProducts, spectrumOf, type LogRecord, type LoggedProduct, type Product,
 } from '@spray/shared';
 import type { Ctx } from '../App';
 import { fieldCount } from '../i18n';
-import { Btn, Card, inputCls, Labeled, localDateIso, STATUS_BG, StatusIcon } from '../ui';
+import { Btn, Card, inputCls, Labeled, STATUS_BG, StatusIcon } from '../ui';
+import { weatherItems } from '../weather';
 import { InfoButton, ProductInfo } from './ProductInfo';
 
 const UNITS = ['l/ha', 'kg/ha', 'ml/ha', 'g/ha'];
-
-function weatherItems(ctx: Ctx): WeatherSnapshotItem[] {
-  const c = ctx.conditions;
-  const lang = ctx.lang;
-  if (!c) return [];
-  const out: WeatherSnapshotItem[] = [];
-  const add = (key: string, label: string, r: Reading | null, unit: string) => {
-    if (!r || r.value === null) return;
-    out.push({ key, label, value: String(r.value), unit, source: r.sourceLabel, station: r.station, distanceKm: r.distanceKm, time: r.time, kind: readingKind(r) });
-  };
-  const L = (lv: string, en: string) => (lang === 'lv' ? lv : en);
-  add('temp', L('Gaisa temperatūra', 'Air temperature'), c.temp, '°C');
-  add('rh', L('Relatīvais mitrums', 'Relative humidity'), c.rh, '%');
-  add('wind', L('Vējš (10 min vid.)', 'Wind (10 min mean)'), c.wind, 'm/s');
-  add('gust', L('Brāzmas', 'Gusts'), c.gust, 'm/s');
-  add('windDir', L('Vēja virziens (no)', 'Wind direction (from)'), c.windDir, '°');
-  add('precipNow', L('Nokrišņi šobrīd', 'Precipitation now'), c.precipNow, 'mm/h');
-  add('dewPoint', L('Rasas punkts', 'Dew point'), c.dewPoint, '°C');
-  add('cloud', L('Mākoņu daudzums', 'Cloud cover'), c.cloud, '%');
-  const derived = (key: string, label: string, value: string, unit: string, source: string, time = c.time) =>
-    out.push({ key, label, value, unit, source, station: '', distanceKm: null, time, kind: 'derived' });
-  if (c.temp?.value != null && c.rh?.value != null)
-    derived('deltaT', 'Delta T', deltaT(c.temp.value, c.rh.value).toFixed(1), '°C', L('aprēķināts no temp. un mitruma', 'computed from temp and RH'));
-  const fc = ctx.snapshot?.forecast;
-  for (const w of c.rain) {
-    if (w.prob === null && w.mm === null) continue;
-    out.push({ key: `rain${w.hours}h`, label: L(`Lietus ${w.hours} h`, `Rain ${w.hours} h`), value: `${w.prob ?? '–'} % / ${w.mm ?? '–'} mm`, unit: '',
-      source: fc?.sourceLabel ?? '', station: fc?.models.join(' + ') ?? '', distanceKm: 0, time: fc?.fetchedAt ?? c.time, kind: 'forecast' });
-  }
-  if (c.minTempPast12 !== null) derived('minTempPast12', L('Min. temp. pēdējās 12 h', 'Min temp last 12 h'), c.minTempPast12.toFixed(1), '°C', c.frostSource);
-  if (c.minTempNext12 !== null) derived('minTempNext12', L('Min. temp. nākamās 12 h', 'Min temp next 12 h'), c.minTempNext12.toFixed(1), '°C', fc?.sourceLabel ?? '');
-  return out;
-}
 
 export function Precheck({ ctx, onDone, onCancel }: { ctx: Ctx; onDone: (synced: boolean, count: number) => void; onCancel: () => void }) {
   const { t, lang, state, update, rule, evaluation: ev } = ctx;
@@ -93,18 +61,19 @@ export function Precheck({ ctx, onDone, onCancel }: { ctx: Ctx; onDone: (synced:
         startedAt: new Date(now).toISOString(), endedAt: null,
         field: { id: f.id, name: f.name, areaHa: f.areaHa },
         crop: { id: f.cropId, name: crop ? crop[lang] : '', bbch: f.bbch },
-        product: { name: mix.name, regNumber: mix.regNumber ?? '', beeHazard: mix.beeHazard, phiDays: mix.phiDays },
+        product: { name: mix.name, regNumber: mix.regNumber ?? '', beeHazard: false, phiDays: null },
         products,
         dose: single ? products[0].dose : products.map((p) => `${p.dose} ${p.doseUnit}`).join(' + '),
         doseUnit: single ? products[0].doseUnit : '',
         waterLHa: water.trim(), purpose: purpose.trim(),
-        earliestHarvest: mix.phiDays != null ? localDateIso(now + mix.phiDays * 86_400_000) : null,
+        earliestHarvest: null,
         operator: { ...state.operator }, nozzle: '',
         flag: ev.flag, flagReason: ev.decisive ? formatReason(ev.decisive.reason, lang) : FLAG_LABELS[ev.flag][lang],
         checks: ev.checks.map((c) => ({ id: c.id, label: CHECK_LABELS[c.id][lang], status: c.status, reason: formatReason(c.reason, lang) })),
         weather,
         prechecks: [],
         notes: notes.trim(),
+        status: 'active',
         batch: selFields.length > 1 ? { id: batchId, group: groupName, fields: selFields.map((x) => x.name) } : null,
       };
     });
