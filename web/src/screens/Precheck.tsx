@@ -1,15 +1,81 @@
 import { useState } from 'react';
 import {
   CHECK_LABELS, CROPS, FLAG_LABELS, formatReason,
-  combineProducts, spectrumOf, type LogRecord, type LoggedProduct, type Product,
+  combineProducts, parseNum, spectrumOf, sprayPlan, type SprayPlan, type LogRecord, type LoggedProduct, type Product,
 } from '@spray/shared';
 import type { Ctx } from '../App';
 import { fieldCount } from '../i18n';
-import { Btn, Card, inputCls, Labeled, STATUS_BG, StatusIcon } from '../ui';
+import { Btn, Card, fmtHa, inputCls, Labeled, NumInput, STATUS_BG, StatusIcon } from '../ui';
 import { weatherItems } from '../weather';
 import { InfoButton, ProductInfo } from './ProductInfo';
 
 const UNITS = ['l/ha', 'kg/ha', 'ml/ha', 'g/ha'];
+
+/** 1.623 → "1,623"; large ml/g also shown in l/kg. */
+export function fmtAmount(n: number, unit: string, lang: 'lv' | 'en'): string {
+  const f = (x: number, d = 3) => {
+    const s = String(Math.round(x * 10 ** d) / 10 ** d);
+    return lang === 'en' ? s : s.replace('.', ',');
+  };
+  const big = unit === 'ml' ? 'l' : unit === 'g' ? 'kg' : null;
+  return big && n >= 1000 ? `${f(n, 0)} ${unit} (${f(n / 1000)} ${big})` : `${f(n)} ${unit}`;
+}
+
+/** "2 pilnas tvertnes + pēdējā 164 l", "1 pilna tvertne", "viena tvertne ar 300 l" */
+function fillsText(full: number, last: number, lang: 'lv' | 'en'): string {
+  const l = last.toLocaleString('lv-LV');
+  if (lang === 'en') {
+    if (full === 0) return `one tank of ${l} l`;
+    return `${full} full tank${full === 1 ? '' : 's'}${last > 0 ? ` + a last one of ${l} l` : ''}`;
+  }
+  if (full === 0) return `viena tvertne ar ${l} l`;
+  const fulls = full % 10 === 1 && full % 100 !== 11 ? `${full} pilna tvertne` : `${full} pilnas tvertnes`;
+  return `${fulls}${last > 0 ? ` + pēdējā ${l} l` : ''}`;
+}
+
+function PlanCard({ ctx, plan, needWater, needTank }: { ctx: Ctx; plan: SprayPlan | null; needWater: boolean; needTank: boolean }) {
+  const { t, lang } = ctx;
+  if (needWater) return <p className="rounded-lg bg-amber-100 p-3 text-sm font-semibold">🧮 {t('planNeedWater')}</p>;
+  if (!plan || !plan.products.length) return null;
+  const n = (x: number) => fmtHa(x, lang);
+  return (
+    <Card title={`🧮 ${t('planTitle')}`}>
+      <div className="space-y-3 text-[15px]">
+        {plan.haPerTank !== null && (
+          <div>
+            <div className="font-extrabold">{t('planFullTank', { l: plan.tankL ?? 0, ha: n(plan.haPerTank) })}</div>
+            {plan.metresPerTank !== null && <div className="text-sm text-neutral-700">{t('planMetres', { m: plan.metresPerTank.toLocaleString('lv-LV') })}</div>}
+            <ul className="mt-1 divide-y divide-neutral-300 rounded-lg border-2 border-neutral-900">
+              {plan.products.map((p) => (
+                <li key={p.name} className="flex min-h-11 items-center justify-between gap-3 px-3 py-1">
+                  <span className="font-bold">{p.name}</span>
+                  <span className="shrink-0 text-lg font-black tabular-nums">{fmtAmount(p.perFullTank!, p.unit, lang)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {needTank && <p className="rounded-lg bg-amber-100 p-2 text-sm font-semibold">{t('planNeedTank')}</p>}
+        <div>
+          <div className="font-extrabold">{t('planTotal', { ha: n(plan.areaHa), l: plan.totalLiquidL.toLocaleString('lv-LV') })}</div>
+          {plan.tankL !== null && (
+            <div className="text-sm font-semibold">
+              {fillsText(plan.fullTanks, plan.lastTankL, lang)}
+            </div>
+          )}
+          <ul className="mt-1 space-y-0.5 text-sm">
+            {plan.products.map((p) => (
+              <li key={p.name}>
+                <strong>{p.name}:</strong> {t('planProductTotal', { total: fmtAmount(p.total, p.unit, lang), dose: `${n(p.dosePerHa)} ${p.unit}/ha` })}
+                {p.lastTank !== null && <> · {t('planLastTank', { a: fmtAmount(p.lastTank, p.unit, lang) })}</>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 export function Precheck({ ctx, onDone, onCancel }: { ctx: Ctx; onDone: (synced: boolean, count: number) => void; onCancel: () => void }) {
   const { t, lang, state, update, rule, evaluation: ev } = ctx;
@@ -40,6 +106,10 @@ export function Precheck({ ctx, onDone, onCancel }: { ctx: Ctx; onDone: (synced:
   const [saving, setSaving] = useState(false);
 
   const missingDose = chosen.some((p) => doseOf(p).dose.trim() === '');
+  const plan = sprayPlan({
+    areaHa: totalHa, waterLHa: parseNum(water), tankL: state.machine.tankL, widthM: state.machine.widthM,
+    products: chosen.map((p) => ({ name: p.name, dose: parseNum(doseOf(p).dose), unit: doseOf(p).unit })),
+  });
   const ready = chosen.length > 0 && !missingDose && !!ev && selFields.length > 0;
 
   async function save() {
@@ -59,7 +129,7 @@ export function Precheck({ ctx, onDone, onCancel }: { ctx: Ctx; onDone: (synced:
       return {
         id: `${batchId}-${i}`,
         startedAt: new Date(now).toISOString(), endedAt: null,
-        field: { id: f.id, name: f.name, areaHa: f.areaHa },
+        field: { id: f.id, name: f.name, areaHa: f.areaHa, plantsPerHa: f.plantsPerHa ?? null, rows: f.rows ?? null, plantingYear: f.plantingYear ?? null },
         crop: { id: f.cropId, name: crop ? crop[lang] : '', bbch: f.bbch },
         product: { name: mix.name, regNumber: mix.regNumber ?? '', beeHazard: false, phiDays: null },
         products,
@@ -68,6 +138,7 @@ export function Precheck({ ctx, onDone, onCancel }: { ctx: Ctx; onDone: (synced:
         waterLHa: water.trim(), purpose: purpose.trim(),
         earliestHarvest: null,
         operator: { ...state.operator }, nozzle: '',
+        machine: { ...state.machine }, plan,
         flag: ev.flag, flagReason: ev.decisive ? formatReason(ev.decisive.reason, lang) : FLAG_LABELS[ev.flag][lang],
         checks: ev.checks.map((c) => ({ id: c.id, label: CHECK_LABELS[c.id][lang], status: c.status, reason: formatReason(c.reason, lang) })),
         weather,
@@ -187,8 +258,21 @@ export function Precheck({ ctx, onDone, onCancel }: { ctx: Ctx; onDone: (synced:
             <Labeled label={t('operator')}><input className={inputCls} value={state.operator.name} onChange={(e) => update({ operator: { ...state.operator, name: e.target.value } })} /></Labeled>
             <Labeled label={t('certificate')}><input className={inputCls} value={state.operator.certificate} onChange={(e) => update({ operator: { ...state.operator, certificate: e.target.value } })} /></Labeled>
           </div>
+          <Labeled label={t('vehicle')}>
+            <input className={inputCls} value={state.machine.vehicle} placeholder={t('vehiclePh')} onChange={(e) => update({ machine: { ...state.machine, vehicle: e.target.value } })} />
+          </Labeled>
+          <div className="grid grid-cols-2 gap-2">
+            <Labeled label={t('tankL')}>
+              <NumInput value={state.machine.tankL} decimals={0} min={0} placeholder="l" onChange={(v) => update({ machine: { ...state.machine, tankL: v } })} />
+            </Labeled>
+            <Labeled label={t('widthM')}>
+              <NumInput value={state.machine.widthM} decimals={2} min={0} placeholder="m" onChange={(v) => update({ machine: { ...state.machine, widthM: v } })} />
+            </Labeled>
+          </div>
         </div>
       </Card>
+
+      <PlanCard ctx={ctx} plan={plan} needWater={chosen.length > 0 && totalHa > 0 && !parseNum(water)} needTank={!!plan && plan.tankL === null} />
 
       <Labeled label={t('notes')}><textarea className={inputCls} rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></Labeled>
       {!ready && <div className="text-sm font-semibold text-neutral-700">{chosen.length === 0 ? t('needProduct') : missingDose ? t('needDose') : selFields.length === 0 ? t('pickFields') : ''}</div>}

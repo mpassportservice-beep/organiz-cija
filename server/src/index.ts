@@ -3,7 +3,7 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { isActive, normalizeState, type AppState, type Lang, type LogRecord } from '@spray/shared';
 import { config } from './config';
-import { kvGet, kvSet, logDeleteActive, logInsert, logList } from './db';
+import { kvGet, kvSet, logDelete, logDeleteActive, logInsert, logList } from './db';
 import { logsToCsv, logsToPdf } from './export';
 import { notifyGreenWindow, sendTest, subscribe, unsubscribe, vapidPublicKey } from './push';
 import { currentSnapshot, locationChanged, msSinceLastRun, refreshAll } from './weather';
@@ -43,6 +43,12 @@ app.post('/api/logs', async (req, reply) => {
 app.delete('/api/logs/:id', async (req, reply) => {
   if (!logDeleteActive(String((req.params as { id: string }).id))) return reply.code(409).send({ error: 'Only a running spraying can be cancelled' });
   return { ok: true };
+});
+/** Settings → delete log records. */
+app.post('/api/logs/delete', async (req, reply) => {
+  const ids = (req.body as { ids?: unknown })?.ids;
+  if (!Array.isArray(ids) || ids.length > 5000 || !ids.every((x) => typeof x === 'string')) return reply.code(400).send({ error: 'ids' });
+  return { ok: true, deleted: logDelete(ids as string[]) };
 });
 app.get('/api/logs.csv', async (req, reply) => {
   reply.header('content-type', 'text/csv; charset=utf-8').header('content-disposition', 'attachment; filename="aal-uzskaite.csv"');

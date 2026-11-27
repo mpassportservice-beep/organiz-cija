@@ -55,6 +55,12 @@ export function logDeleteActive(id: string): boolean {
   db.prepare('DELETE FROM logs WHERE id = ?').run(id);
   return true;
 }
+/** Delete records chosen in Settings (finished or not). Returns how many were deleted. */
+export function logDelete(ids: string[]): number {
+  let n = 0;
+  for (const id of ids) n += Number(db.prepare('DELETE FROM logs WHERE id = ?').run(id).changes);
+  return n;
+}
 export function logList(): LogRecord[] {
   return (db.prepare('SELECT record FROM logs ORDER BY started_at DESC').all() as { record: string }[]).map((r) => JSON.parse(r.record));
 }

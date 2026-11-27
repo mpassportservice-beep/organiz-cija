@@ -10,6 +10,12 @@ export const fmtDate = (iso: string | number) =>
 export const localDateIso = (ms: number) =>
   new Intl.DateTimeFormat('sv-SE', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
 
+/** 10.82 → "10,82" (Latvian), at most two decimals. */
+export const fmtHa = (ha: number, lang: Lang) => {
+  const s = String(Math.round(ha * 100) / 100);
+  return lang === 'en' ? s : s.replace('.', ',');
+};
+
 export function ago(ms: number, lang: Lang, t: TFn): string {
   const min = Math.floor(ms / 60_000);
   if (min < 1) return t('justNow');

@@ -165,10 +165,22 @@ export function useLogs() {
     } catch { return false; }
   }, [sync]);
 
+  /** Settings: delete records for good (needs a connection). */
+  const purge = useCallback(async (ids: string[]): Promise<boolean> => {
+    try {
+      await api('/api/logs/delete', { method: 'POST', body: JSON.stringify({ ids }) });
+      const queued = (read<LogRecord[]>(LS.queue) ?? []).filter((x) => !ids.includes(x.id));
+      write(LS.queue, queued);
+      setQueue(queued);
+      await sync();
+      return true;
+    } catch { return false; }
+  }, [sync]);
+
   const pending = new Set(queue.map((q) => q.id));
   // The phone's queued version is newer than what the server last sent.
   const all = [...queue, ...logs.filter((l) => !pending.has(l.id))].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-  return { logs: all, pending, add, remove };
+  return { logs: all, pending, add, remove, purge };
 }
 
 /** Re-render every 30 s so "x min ago" and staleness move without new data. */
