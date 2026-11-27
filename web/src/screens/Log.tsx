@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { durationMin, isActive, plantingAge, type LogRecord } from '@spray/shared';
+import { durationMin, isActive, plantingAge, plantingLabel, type LogRecord } from '@spray/shared';
 import type { Ctx } from '../App';
 import { DEMO } from '../demo';
 import { Btn, fmtDate, fmtHa, fmtTime, STATUS_BG } from '../ui';
@@ -142,7 +142,7 @@ export function Log({ ctx }: { ctx: Ctx }) {
           {open === r.id && (
             <div className="space-y-2 border-t-2 border-neutral-900 p-3 text-sm">
               {(r.field.plantsPerHa || r.field.rows || r.field.plantingYear) && (
-                <div><strong>{t('field')}:</strong> {[r.field.plantingYear ? `${t('plantingYear').toLowerCase()} ${r.field.plantingYear} (${plantingAge(r.field.plantingYear, new Date(r.startedAt), lang)})` : null,
+                <div><strong>{t('field')}:</strong> {[r.field.plantingYear ? `${t('planted')} ${plantingLabel(r.field.plantingYear, r.field.plantingSeason, lang)} (${plantingAge(r.field.plantingYear, new Date(r.startedAt), lang, r.field.plantingSeason)})` : null,
                   r.field.rows ? `${r.field.rows} ${t('rowsShort')}` : null, r.field.plantsPerHa ? `${r.field.plantsPerHa.toLocaleString('lv-LV')} ${t('plantsShort')}` : null].filter(Boolean).join(' · ')}</div>
               )}
               {r.machine && (r.machine.vehicle || r.machine.tankL || r.machine.widthM) && (

@@ -20,7 +20,11 @@ export interface Field {
   rows?: 3 | 4 | null;
   /** Year the field was planted. */
   plantingYear?: number | null;
+  /** Planted in spring or autumn of that year. */
+  plantingSeason?: PlantingSeason | null;
 }
+
+export type PlantingSeason = 'spring' | 'autumn';
 
 /** Sprayer used: remembered on the phone's farm settings like the operator. */
 export interface Machine {
@@ -173,7 +177,7 @@ export interface LogRecord {
   id: string;
   startedAt: string;
   endedAt?: string | null;
-  field: { id: string; name: string; areaHa: number | null; plantsPerHa?: number | null; rows?: 3 | 4 | null; plantingYear?: number | null };
+  field: { id: string; name: string; areaHa: number | null; plantsPerHa?: number | null; rows?: 3 | 4 | null; plantingYear?: number | null; plantingSeason?: PlantingSeason | null };
   /** Sprayer and the mixing plan worked out from it. */
   machine?: Machine;
   plan?: SprayPlan | null;
@@ -216,12 +220,32 @@ export function durationMin(r: LogRecord): number | null {
   return Number.isFinite(d) && d >= 0 ? Math.round(d / 60_000) : null;
 }
 
-/** "šī gada stādījums" / "1 gads" / "3 gadi" / "11 gadi" – age of a planting in the given year. */
-export function plantingAge(year: number | null | undefined, now = new Date(), lang: 'lv' | 'en' = 'lv'): string | null {
+/** Approximate planting date: spring = 1 May, autumn = 15 September. */
+const seasonDate = (year: number, season: PlantingSeason) => new Date(year, season === 'spring' ? 4 : 8, season === 'spring' ? 1 : 15);
+
+/** "2023. g. pavasaris" / "spring 2023" */
+export function plantingLabel(year: number | null | undefined, season: PlantingSeason | null | undefined, lang: 'lv' | 'en' = 'lv'): string | null {
+  if (!year) return null;
+  if (!season) return String(year);
+  return lang === 'lv' ? `${year}. g. ${season === 'spring' ? 'pavasaris' : 'rudens'}` : `${season === 'spring' ? 'spring' : 'autumn'} ${year}`;
+}
+
+/**
+ * Age of a planting: "1 gads", "3 gadi", "21 gads". With a season it counts whole years from that spring/autumn
+ * ("< 1 gads" in the first year); with only a year it is this year minus the planting year.
+ */
+export function plantingAge(year: number | null | undefined, now = new Date(), lang: 'lv' | 'en' = 'lv', season?: PlantingSeason | null): string | null {
   if (!year || !Number.isFinite(year)) return null;
+  const words = (age: number) => (lang === 'en' ? `${age} year${age === 1 ? '' : 's'} old` : `${age} ${age % 10 === 1 && age % 100 !== 11 ? 'gads' : 'gadi'}`);
+  if (season) {
+    const d = seasonDate(year, season);
+    if (d.getTime() > now.getTime()) return lang === 'lv' ? 'vēl nav iestādīts' : 'not planted yet';
+    let age = now.getFullYear() - d.getFullYear();
+    if (now.getMonth() < d.getMonth() || (now.getMonth() === d.getMonth() && now.getDate() < d.getDate())) age--;
+    return age < 1 ? (lang === 'lv' ? '< 1 gads' : '< 1 year') : words(age);
+  }
   const age = now.getFullYear() - year;
   if (age < 0) return lang === 'lv' ? `stādīs ${year}. gadā` : `to be planted in ${year}`;
   if (age === 0) return lang === 'lv' ? 'šī gada stādījums' : 'planted this year';
-  if (lang === 'en') return `${age} year${age === 1 ? '' : 's'} old`;
-  return `${age} ${age % 10 === 1 && age % 100 !== 11 ? 'gads' : 'gadi'}`;
+  return words(age);
 }

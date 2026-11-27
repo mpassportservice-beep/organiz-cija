@@ -129,7 +129,7 @@ export function Precheck({ ctx, onDone, onCancel }: { ctx: Ctx; onDone: (synced:
       return {
         id: `${batchId}-${i}`,
         startedAt: new Date(now).toISOString(), endedAt: null,
-        field: { id: f.id, name: f.name, areaHa: f.areaHa, plantsPerHa: f.plantsPerHa ?? null, rows: f.rows ?? null, plantingYear: f.plantingYear ?? null },
+        field: { id: f.id, name: f.name, areaHa: f.areaHa, plantsPerHa: f.plantsPerHa ?? null, rows: f.rows ?? null, plantingYear: f.plantingYear ?? null, plantingSeason: f.plantingSeason ?? null },
         crop: { id: f.cropId, name: crop ? crop[lang] : '', bbch: f.bbch },
         product: { name: mix.name, regNumber: mix.regNumber ?? '', beeHazard: false, phiDays: null },
         products,
