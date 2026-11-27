@@ -11,7 +11,7 @@ import {
   createSession, endAllSessions, endSession, newNonce, NONCE_COOKIE, providers, SESSION_COOKIE, sessionUser, useNonce, verifyIdToken,
 } from './auth';
 import { config } from './config';
-import { db, logDeleteActive, logInsert, logList } from './db';
+import { db, logDelete, logDeleteActive, logInsert, logList } from './db';
 import { logsToCsv, logsToPdf } from './export';
 import { farmKey, farmLocation, type Farm } from './farm';
 import { farmsWithSubscribers, notifyGreenWindow, sendTest, subscribe, unsubscribe, vapidPublicKey } from './push';
@@ -254,6 +254,12 @@ app.post('/api/logs', signedIn, async (req, reply) => {
 app.delete('/api/logs/:id', signedIn, async (req, reply) => {
   if (!logDeleteActive(req.farm!.id, String((req.params as { id: string }).id))) return reply.code(409).send({ error: 'Only a running spraying can be cancelled' });
   return { ok: true };
+});
+/** Settings → delete log records (of this farm only). */
+app.post('/api/logs/delete', signedIn, async (req, reply) => {
+  const ids = (req.body as { ids?: unknown })?.ids;
+  if (!Array.isArray(ids) || ids.length > 5000 || !ids.every((x) => typeof x === 'string')) return reply.code(400).send({ error: 'ids' });
+  return { ok: true, deleted: logDelete(req.farm!.id, ids as string[]) };
 });
 app.get('/api/logs.csv', signedIn, async (req, reply) => {
   reply.header('content-type', 'text/csv; charset=utf-8').header('content-disposition', 'attachment; filename="aal-uzskaite.csv"');

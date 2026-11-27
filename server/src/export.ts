@@ -20,14 +20,14 @@ const T = {
     title: 'Augu aizsardzības līdzekļu lietošanas uzskaite', date: 'Datums', start: 'Sākums', end: 'Beigas', duration: 'Ilgums, min', field: 'Lauks', area: 'Platība, ha',
     crop: 'Kultūraugs', bbch: 'BBCH', product: 'AAL nosaukums', reg: 'Reģ. Nr.', dose: 'Deva', unit: 'Devas mērv.', water: 'Darba šķidrums, l/ha',
     purpose: 'Kaitīgais organisms / mērķis', bee: 'Bīstams bitēm', phi: 'Nogaidīšanas laiks, d', harvest: 'Agrākā raža', operator: 'Operators',
-    cert: 'Apliecības Nr.', nozzle: 'Sprauslas', flag: 'Karogs', reason: 'Iemesls', prechecks: 'Pārbaudes', notes: 'Piezīmes', batch: 'Smidzināts kopā ar', subs: 'Darbīgās vielas', by: 'Ierakstīja', weather: 'Laikapstākļi sākumā', weatherEnd: 'Laikapstākļi beigās',
+    cert: 'Apliecības Nr.', nozzle: 'Sprauslas', flag: 'Karogs', reason: 'Iemesls', prechecks: 'Pārbaudes', notes: 'Piezīmes', batch: 'Smidzināts kopā ar', subs: 'Darbīgās vielas', vehicle: 'Transportlīdzeklis', tank: 'Tvertne, l', width: 'Darba platums, m', perTank: 'Uz pilnu tvertni', fieldInfo: 'Stādījums', by: 'Ierakstīja', weather: 'Laikapstākļi sākumā', weatherEnd: 'Laikapstākļi beigās',
     yes: 'Jā', no: 'Nē', generated: 'Sagatavots', value: 'vērtība', source: 'avots', station: 'stacija', km: 'km', at: 'laiks', kind: 'veids', none: 'Nav ierakstu',
   },
   en: {
     title: 'Plant protection product usage record', date: 'Date', start: 'Start', end: 'End', duration: 'Duration, min', field: 'Field', area: 'Area, ha',
     crop: 'Crop', bbch: 'BBCH', product: 'Product', reg: 'Reg. no.', dose: 'Dose', unit: 'Dose unit', water: 'Spray volume, l/ha',
     purpose: 'Target organism / purpose', bee: 'Bee-hazardous', phi: 'Pre-harvest interval, d', harvest: 'Earliest harvest', operator: 'Operator',
-    cert: 'Certificate no.', nozzle: 'Nozzles', flag: 'Flag', reason: 'Reason', prechecks: 'Pre-checks', notes: 'Notes', batch: 'Sprayed together with', subs: 'Active substances', by: 'Recorded by', weather: 'Weather at start', weatherEnd: 'Weather at end',
+    cert: 'Certificate no.', nozzle: 'Nozzles', flag: 'Flag', reason: 'Reason', prechecks: 'Pre-checks', notes: 'Notes', batch: 'Sprayed together with', subs: 'Active substances', vehicle: 'Vehicle', tank: 'Tank, l', width: 'Working width, m', perTank: 'Per full tank', fieldInfo: 'Planting', by: 'Recorded by', weather: 'Weather at start', weatherEnd: 'Weather at end',
     yes: 'Yes', no: 'No', generated: 'Generated', value: 'value', source: 'source', station: 'station', km: 'km', at: 'time', kind: 'kind', none: 'No records',
   },
 } as const;
@@ -44,6 +44,17 @@ function substancesText(r: LogRecord): string {
   return (r.products ?? []).flatMap((p) => p.activeSubstances).map((x) => `${x.name} ${x.amount}`.trim()).join('; ');
 }
 
+/** "MCPA 750 5 l; Lontrel 0.75 kg" */
+function perTankText(r: LogRecord): string {
+  if (!r.plan || r.plan.haPerTank === null) return '';
+  return r.plan.products.map((p) => `${p.name} ${p.perFullTank} ${p.unit}`).join('; ');
+}
+/** "2021 · 4 rindas · 40000 augi/ha" */
+function fieldInfoText(r: LogRecord): string {
+  const f = r.field;
+  return [f.plantingYear ?? null, f.rows ? `${f.rows} rows` : null, f.plantsPerHa ? `${f.plantsPerHa}/ha` : null].filter(Boolean).join(' · ');
+}
+
 function csvCell(v: unknown): string {
   let s = v === null || v === undefined ? '' : String(v);
   if (/^[=+\-@\t\r]/.test(s) && Number.isNaN(Number(s.replace(',', '.')))) s = `'${s}`; // no spreadsheet formula injection
@@ -54,7 +65,7 @@ function csvCell(v: unknown): string {
 export function logsToCsv(records: LogRecord[], lang: Lang): string {
   const t = T[lang];
   const head: string[] = [t.date, t.start, t.end, t.duration, t.field, t.area, t.crop, t.bbch, t.product, t.reg, t.dose, t.unit, t.water, t.purpose,
-    t.operator, t.cert, t.nozzle, t.flag, t.reason, t.prechecks, t.notes, t.batch, t.subs, t.by];
+    t.operator, t.cert, t.nozzle, t.flag, t.reason, t.prechecks, t.notes, t.batch, t.subs, t.vehicle, t.tank, t.width, t.perTank, t.fieldInfo, t.by];
   for (const k of WEATHER_KEYS) head.push(`${k} ${t.value}`, `${k} ${t.source}`, `${k} ${t.station}`, `${k} ${t.km}`, `${k} ${t.at}`, `${k} ${t.kind}`);
   head.push('id', 'started_at_utc');
   const rows = records.map((r) => {
@@ -63,6 +74,7 @@ export function logsToCsv(records: LogRecord[], lang: Lang): string {
       r.product.regNumber, r.dose, r.doseUnit, r.waterLHa, r.purpose,
       r.operator.name, r.operator.certificate, r.nozzle, r.flag, r.flagReason,
       r.prechecks.map((p) => `${p.checked ? '[x]' : '[ ]'} ${p.label}`).join(' | '), r.notes, batchText(r), substancesText(r),
+      r.machine?.vehicle ?? '', r.machine?.tankL ?? '', r.machine?.widthM ?? '', perTankText(r), fieldInfoText(r),
       r.recordedBy ? r.recordedBy.name || r.recordedBy.email : ''];
     for (const k of WEATHER_KEYS) {
       const w = r.weather.find((x) => x.key === k);
@@ -114,6 +126,9 @@ export function logsToPdf(records: LogRecord[], lang: Lang, farmName = ''): Prom
         kv(t.dose, `${r.dose} ${r.doseUnit}${r.waterLHa ? ` · ${t.water}: ${r.waterLHa}` : ''}`);
       }
       kv(t.purpose, r.purpose);
+      kv(t.fieldInfo, fieldInfoText(r));
+      if (r.machine) kv(t.vehicle, [r.machine.vehicle, r.machine.tankL ? `${r.machine.tankL} l` : '', r.machine.widthM ? `${r.machine.widthM} m` : ''].filter(Boolean).join(' · '));
+      kv(t.perTank, perTankText(r));
       if (r.batch && r.batch.fields.length > 1) kv(t.batch, batchText(r));
       if (r.recordedBy) kv(t.by, r.recordedBy.name ? `${r.recordedBy.name} (${r.recordedBy.email})` : r.recordedBy.email);
       kv(t.operator, `${r.operator.name}${r.operator.certificate ? ` · ${t.cert} ${r.operator.certificate}` : ''}`);

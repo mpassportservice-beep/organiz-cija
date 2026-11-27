@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
 import { DEMO } from '../demo';
-import { CROPS, DEFAULT_THRESHOLDS, THRESHOLD_GROUPS, type Field, type FieldGroup, type Thresholds } from '@spray/shared';
+import { CROPS, DEFAULT_THRESHOLDS, isActive, plantingAge, THRESHOLD_GROUPS, type Field, type FieldGroup, type Thresholds } from '@spray/shared';
 import type { Ctx } from '../App';
 import { AccountCard, FarmCard } from './Farm';
+import { logTitle } from './Log';
 import { pushCurrent, pushDisable, pushEnable, pushSupported, pushTest } from '../data';
 import { fieldCount, THRESHOLD_LABELS, type Key } from '../i18n';
-import { ago, Btn, Card, fmtTime, inputCls, Labeled, NumInput } from '../ui';
+import { ago, Btn, Card, fmtHa, fmtTime, inputCls, Labeled, NumInput } from '../ui';
+
+const THIS_YEAR = new Date().getFullYear();
+const YEARS = Array.from({ length: 41 }, (_, i) => THIS_YEAR + 1 - i);
 
 function FieldEditor({ ctx, f }: { ctx: Ctx; f: Field }) {
   const { t, lang, state, update } = ctx;
@@ -16,15 +20,30 @@ function FieldEditor({ ctx, f }: { ctx: Ctx; f: Field }) {
         <Labeled label={t('fieldName')}><input className={inputCls} value={f.name} onChange={(e) => set({ name: e.target.value })} /></Labeled>
         <Labeled label={t('area')}><NumInput value={f.areaHa} decimals={2} min={0} placeholder="0,00" onChange={(v) => set({ areaHa: v === null ? null : Math.round(v * 100) / 100 })} /></Labeled>
       </div>
+      <Labeled label={t('crop')}>
+        <select className={inputCls} value={f.cropId ?? ''} onChange={(e) => set({ cropId: e.target.value || null })}>
+          <option value="">{t('choose')}</option>
+          {CROPS.map((c) => <option key={c.id} value={c.id}>{c[lang]}</option>)}
+        </select>
+      </Labeled>
       <div className="grid grid-cols-[1fr_6.5rem] gap-2">
-        <Labeled label={t('crop')}>
-          <select className={inputCls} value={f.cropId ?? ''} onChange={(e) => set({ cropId: e.target.value || null })}>
-            <option value="">{t('choose')}</option>
-            {CROPS.map((c) => <option key={c.id} value={c.id}>{c[lang]}</option>)}
+        <Labeled label={t('plantsPerHa')}>
+          <NumInput value={f.plantsPerHa ?? null} step="1" min={0} placeholder="0" onChange={(v) => set({ plantsPerHa: v === null ? null : Math.round(v) })} />
+        </Labeled>
+        <Labeled label={t('rows')}>
+          <select className={inputCls} value={f.rows ?? ''} onChange={(e) => set({ rows: e.target.value === '' ? null : (Number(e.target.value) as 3 | 4) })}>
+            <option value="">—</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
           </select>
         </Labeled>
-        <Labeled label="BBCH"><NumInput value={f.bbch} step="1" onChange={(v) => set({ bbch: v === null ? null : Math.max(0, Math.min(99, Math.round(v))) })} /></Labeled>
       </div>
+      <Labeled label={t('plantingYear')} hint={plantingAge(f.plantingYear, new Date(), lang) ?? undefined}>
+        <select className={inputCls} value={f.plantingYear ?? ''} onChange={(e) => set({ plantingYear: e.target.value === '' ? null : Number(e.target.value) })}>
+          <option value="">{t('choose')}</option>
+          {YEARS.map((y) => <option key={y} value={y}>{y} · {plantingAge(y, new Date(), lang)}</option>)}
+        </select>
+      </Labeled>
       {state.fields.length > 1 && (
         <Btn kind="danger" className="w-full" onClick={() => {
           if (!DEMO && !confirm(`${t('delete')}: ${f.name}?`)) return;
@@ -74,6 +93,65 @@ function GroupEditor({ ctx, g, onClose }: { ctx: Ctx; g: FieldGroup; onClose: ()
         }}>{t('delete')}</Btn>
         <Btn kind="ghost" onClick={onClose}>{t('close')}</Btn>
       </div>
+    </div>
+  );
+}
+
+/** "1 ieraksts", "3 ieraksti", "21 ieraksts" */
+const recordsWord = (n: number, lang: 'lv' | 'en') =>
+  lang === 'en' ? `${n} record${n === 1 ? '' : 's'}` : `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'ieraksts' : 'ieraksti'}`;
+
+/** Delete log records: tick some (or all) and confirm. Exports and the log no longer show them. */
+function LogCleanup({ ctx }: { ctx: Ctx }) {
+  const { t, lang, logs } = ctx;
+  const [open, setOpen] = useState(false);
+  const [sel, setSel] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const list = logs.filter((r) => !isActive(r));
+  if (!open) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm">{t('logDeleteHint', { n: recordsWord(list.length, lang) })}</p>
+        <Btn kind="ghost" className="w-full" disabled={!list.length} onClick={() => setOpen(true)}>{t('logDeleteOpen')}</Btn>
+        {msg && <p className="text-sm font-bold" role="status">{msg}</p>}
+      </div>
+    );
+  }
+  const all = sel.length === list.length && list.length > 0;
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1">
+        <button className="min-h-10 rounded-md border-2 border-neutral-900 px-2 text-sm font-bold" onClick={() => setSel(all ? [] : list.map((r) => r.id))}>
+          {all ? t('selectNone') : t('selectAll')}
+        </button>
+      </div>
+      <ul className="max-h-[50dvh] divide-y divide-neutral-300 overflow-y-auto rounded-lg border-2 border-neutral-900">
+        {list.map((r) => (
+          <li key={r.id}>
+            <label className="flex min-h-12 cursor-pointer items-center gap-3 px-3 py-1.5">
+              <input type="checkbox" className="h-6 w-6 shrink-0 accent-red-700" checked={sel.includes(r.id)}
+                onChange={() => setSel((s) => (s.includes(r.id) ? s.filter((x) => x !== r.id) : [...s, r.id]))} />
+              <span className="min-w-0">
+                <span className="block text-sm font-bold">{logTitle(r, lang)}</span>
+                <span className="block truncate text-xs text-neutral-700">{r.product.name}</span>
+              </span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div className="grid grid-cols-2 gap-2">
+        <Btn kind="ghost" onClick={() => { setOpen(false); setSel([]); }}>{t('cancel')}</Btn>
+        <Btn kind="danger" disabled={!sel.length || busy} onClick={async () => {
+          if (!confirm(t('logDeleteConfirm', { n: recordsWord(sel.length, lang) }))) return;
+          setBusy(true);
+          const ok = await ctx.purgeLogs(sel);
+          setBusy(false);
+          setMsg(ok ? t('logDeleted', { n: recordsWord(sel.length, lang) }) : t('logDeleteOffline'));
+          if (ok) { setSel([]); setOpen(false); }
+        }}>{t('logDeleteBtn', { n: sel.length })}</Btn>
+      </div>
+      {msg && <p className="text-sm font-bold" role="status">{msg}</p>}
     </div>
   );
 }
@@ -139,7 +217,15 @@ export function Settings({ ctx }: { ctx: Ctx }) {
             </div>
           ) : (
             <button key={f.id} className="flex min-h-12 w-full items-center justify-between rounded-lg border-2 border-neutral-900 px-3 text-left font-bold" onClick={() => setOpenField(f.id)}>
-              <span>{f.name}{f.areaHa ? ` · ${f.areaHa} ha` : ''}{f.cropId ? ` · ${CROPS.find((c) => c.id === f.cropId)?.[lang]}` : ''}</span><span aria-hidden>✎</span>
+              <span>
+                {f.name}{f.areaHa ? ` · ${fmtHa(f.areaHa, lang)} ha` : ''}{f.cropId ? ` · ${CROPS.find((c) => c.id === f.cropId)?.[lang]}` : ''}
+                {(f.plantingYear || f.rows || f.plantsPerHa) ? (
+                  <span className="block text-sm font-semibold text-neutral-700">
+                    {[f.plantingYear ? `${f.plantingYear} (${plantingAge(f.plantingYear, new Date(), lang)})` : null, f.rows ? `${f.rows} ${t('rowsShort')}` : null,
+                      f.plantsPerHa ? `${f.plantsPerHa.toLocaleString('lv-LV')} ${t('plantsShort')}` : null].filter(Boolean).join(' · ')}
+                  </span>
+                ) : null}
+              </span><span aria-hidden>✎</span>
             </button>
           )))}
           <Btn className="w-full" onClick={() => {
@@ -168,6 +254,8 @@ export function Settings({ ctx }: { ctx: Ctx }) {
           }}>+ {t('addGroup')}</Btn>
         </div>
       </Card>
+
+      <Card title={t('logDeleteTitle')}><LogCleanup ctx={ctx} /></Card>
 
       <Card title={t('notifTitle')}><Notifications ctx={ctx} /></Card>
 

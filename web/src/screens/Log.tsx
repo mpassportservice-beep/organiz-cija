@@ -1,9 +1,20 @@
 import { useEffect, useState } from 'react';
-import { durationMin, isActive, type LogRecord } from '@spray/shared';
+import { durationMin, isActive, plantingAge, type LogRecord } from '@spray/shared';
 import type { Ctx } from '../App';
 import { DEMO } from '../demo';
-import { Btn, fmtDate, fmtTime, STATUS_BG } from '../ui';
+import { Btn, fmtDate, fmtHa, fmtTime, STATUS_BG } from '../ui';
+import { fmtAmount } from './Precheck';
 import { weatherItems } from '../weather';
+
+/** "26.11.2026 · 19:49–23:30 · P4-1 · 10,82 ha" */
+export function logTitle(r: LogRecord, lang: 'lv' | 'en'): string {
+  return [
+    fmtDate(r.startedAt),
+    `${fmtTime(r.startedAt)}${r.endedAt ? `–${fmtTime(r.endedAt)}` : ''}`,
+    r.field.name,
+    r.field.areaHa ? `${fmtHa(r.field.areaHa, lang)} ha` : null,
+  ].filter(Boolean).join(' · ');
+}
 
 /** "1:05:09" */
 function clock(ms: number): string {
@@ -122,7 +133,7 @@ export function Log({ ctx }: { ctx: Ctx }) {
           <button className="flex w-full items-start gap-3 p-3 text-left" onClick={() => setOpen(open === r.id ? null : r.id)} aria-expanded={open === r.id}>
             <span className={`mt-1 rounded px-1.5 py-0.5 text-xs font-black uppercase ${STATUS_BG[r.flag]}`}>{r.flag === 'green' ? '✓' : r.flag === 'amber' ? '!' : '✕'}</span>
             <span className="min-w-0 flex-1">
-              <span className="block font-extrabold">{fmtDate(r.startedAt)} {fmtTime(r.startedAt)}{r.endedAt ? `–${fmtTime(r.endedAt)}` : ''} · {r.field.name}</span>
+              <span className="block font-extrabold">{logTitle(r, lang)}</span>
               <span className="block text-sm font-semibold">{r.product.name} · {r.dose}{r.doseUnit ? ` ${r.doseUnit}` : ''}{r.crop.name ? ` · ${r.crop.name}` : ''}{r.crop.bbch !== null ? ` BBCH ${r.crop.bbch}` : ''}</span>
               {pendingLogs.has(r.id) && <span className="mt-1 inline-block rounded bg-neutral-900 px-1.5 text-xs font-bold text-white">{t('notSynced')}</span>}
             </span>
@@ -131,6 +142,16 @@ export function Log({ ctx }: { ctx: Ctx }) {
           {open === r.id && (
             <div className="space-y-2 border-t-2 border-neutral-900 p-3 text-sm">
               {r.recordedBy && <div><strong>{t('recordedBy')}:</strong> {r.recordedBy.name || r.recordedBy.email}</div>}
+              {(r.field.plantsPerHa || r.field.rows || r.field.plantingYear) && (
+                <div><strong>{t('field')}:</strong> {[r.field.plantingYear ? `${t('plantingYear').toLowerCase()} ${r.field.plantingYear} (${plantingAge(r.field.plantingYear, new Date(r.startedAt), lang)})` : null,
+                  r.field.rows ? `${r.field.rows} ${t('rowsShort')}` : null, r.field.plantsPerHa ? `${r.field.plantsPerHa.toLocaleString('lv-LV')} ${t('plantsShort')}` : null].filter(Boolean).join(' · ')}</div>
+              )}
+              {r.machine && (r.machine.vehicle || r.machine.tankL || r.machine.widthM) && (
+                <div><strong>{t('vehicle')}:</strong> {[r.machine.vehicle || null, r.machine.tankL ? `${r.machine.tankL} l` : null, r.machine.widthM ? `${fmtHa(r.machine.widthM, lang)} m` : null].filter(Boolean).join(' · ')}</div>
+              )}
+              {r.plan && r.plan.haPerTank !== null && r.plan.products.length > 0 && (
+                <div><strong>{t('planPerTank', { l: r.plan.tankL ?? 0 })}:</strong> {r.plan.products.map((p) => `${p.name} ${fmtAmount(p.perFullTank ?? 0, p.unit, lang)}`).join(', ')}</div>
+              )}
               <div><strong>{t('operator')}:</strong> {r.operator.name || '—'}{r.operator.certificate ? ` · ${r.operator.certificate}` : ''}</div>
               {r.nozzle && <div><strong>{t('nozzle')}:</strong> {r.nozzle}</div>}
               {r.products && r.products.length > 1 && (

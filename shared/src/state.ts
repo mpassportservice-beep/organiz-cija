@@ -1,6 +1,7 @@
 import { mergeThresholds, type Thresholds } from './config';
 import { inLatvia } from './latvia';
 import { combineProducts } from './products';
+import type { SprayPlan } from './plan';
 import type { CropSelection, Lang, Product, Reading } from './types';
 
 /** 8 compass sectors (0 = N, clockwise) in which a sensitive object lies, seen from the field. */
@@ -13,6 +14,21 @@ export interface Field {
   water: number[];
   neighbours: number[];
   hives: number[];
+  /** Plants per hectare. */
+  plantsPerHa?: number | null;
+  /** Rows per bed: 3 or 4. */
+  rows?: 3 | 4 | null;
+  /** Year the field was planted. */
+  plantingYear?: number | null;
+}
+
+/** Sprayer used: remembered on the phone's farm settings like the operator. */
+export interface Machine {
+  vehicle: string;
+  /** Tank volume, litres. */
+  tankL: number | null;
+  /** Working width, metres. */
+  widthM: number | null;
 }
 
 /** Fields sprayed together in one pass (many small plots side by side). */
@@ -51,6 +67,7 @@ export interface AppState {
   /** When set, the main screen works for this group (its first field gives crop and surroundings). */
   selectedGroupId: string | null;
   operator: { name: string; certificate: string };
+  machine: Machine;
   nozzle: string;
   /** null = the server's default farm (Priekuļi unless configured otherwise). */
   location: FarmLocation | null;
@@ -77,6 +94,7 @@ export function defaultState(): AppState {
     groups: [],
     selectedGroupId: null,
     operator: { name: '', certificate: '' },
+    machine: { vehicle: '', tankL: null, widthM: null },
     nozzle: '',
     location: null,
   };
@@ -100,6 +118,7 @@ export function normalizeState(raw: unknown): AppState {
     groups: Array.isArray(s.groups) ? s.groups : [],
     selectedGroupId: typeof s.selectedGroupId === 'string' ? s.selectedGroupId : null,
     operator: { ...d.operator, ...(s.operator ?? {}) },
+    machine: { ...d.machine, ...(s.machine ?? {}) },
     location: validLocation(s.location),
   };
 }
@@ -154,7 +173,10 @@ export interface LogRecord {
   id: string;
   startedAt: string;
   endedAt?: string | null;
-  field: { id: string; name: string; areaHa: number | null };
+  field: { id: string; name: string; areaHa: number | null; plantsPerHa?: number | null; rows?: 3 | 4 | null; plantingYear?: number | null };
+  /** Sprayer and the mixing plan worked out from it. */
+  machine?: Machine;
+  plan?: SprayPlan | null;
   crop: { id: string | null; name: string; bbch: number | null };
   /** The whole tank mix as one entry ("A + B"); limits combined. Kept for exports and older records. */
   product: { name: string; regNumber: string; beeHazard: boolean; phiDays: number | null };
@@ -194,4 +216,14 @@ export function durationMin(r: LogRecord): number | null {
   if (!r.endedAt) return null;
   const d = Date.parse(r.endedAt) - Date.parse(r.startedAt);
   return Number.isFinite(d) && d >= 0 ? Math.round(d / 60_000) : null;
+}
+
+/** "šī gada stādījums" / "1 gads" / "3 gadi" / "11 gadi" – age of a planting in the given year. */
+export function plantingAge(year: number | null | undefined, now = new Date(), lang: 'lv' | 'en' = 'lv'): string | null {
+  if (!year || !Number.isFinite(year)) return null;
+  const age = now.getFullYear() - year;
+  if (age < 0) return lang === 'lv' ? `stādīs ${year}. gadā` : `to be planted in ${year}`;
+  if (age === 0) return lang === 'lv' ? 'šī gada stādījums' : 'planted this year';
+  if (lang === 'en') return `${age} year${age === 1 ? '' : 's'} old`;
+  return `${age} ${age % 10 === 1 && age % 100 !== 11 ? 'gads' : 'gadi'}`;
 }

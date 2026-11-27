@@ -91,6 +91,12 @@ export function logDeleteActive(farmId: number, id: string): boolean {
   db.prepare('DELETE FROM logs WHERE id = ? AND farm_id = ?').run(id, farmId);
   return true;
 }
+/** Delete records of this farm chosen in Settings (finished or not). Returns how many were deleted. */
+export function logDelete(farmId: number, ids: string[]): number {
+  let n = 0;
+  for (const id of ids) n += Number(db.prepare('DELETE FROM logs WHERE id = ? AND farm_id = ?').run(id, farmId).changes);
+  return n;
+}
 export function logList(farmId: number): LogRecord[] {
   return (db.prepare('SELECT record FROM logs WHERE farm_id = ? ORDER BY started_at DESC').all(farmId) as { record: string }[]).map((r) => JSON.parse(r.record));
 }
