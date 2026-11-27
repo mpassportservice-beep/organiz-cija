@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseNum, sprayPlan } from './plan';
-import { plantingAge } from './state';
+import { plantingAge, plantingLabel } from './state';
 
 describe('spray plan', () => {
   it('works out amounts per tank, totals and fills', () => {
@@ -37,4 +37,21 @@ describe('planting age', () => {
   it.each([[2026, 'šī gada stādījums'], [2025, '1 gads'], [2023, '3 gadi'], [2015, '11 gadi'], [2005, '21 gads'], [2027, 'stādīs 2027. gadā']])
     ('%i → %s', (y, s) => expect(plantingAge(y, now)).toBe(s));
   it('none', () => expect(plantingAge(null, now)).toBeNull());
+});
+
+describe('planting season', () => {
+  const nov = new Date('2026-11-27');
+  it.each([
+    [2026, 'autumn', '< 1 gads'], [2026, 'spring', '< 1 gads'], [2025, 'autumn', '1 gads'], [2025, 'spring', '1 gads'],
+    [2023, 'autumn', '3 gadi'], [2027, 'spring', 'vēl nav iestādīts'],
+  ] as const)('%i %s in Nov 2026 → %s', (y, s, out) => expect(plantingAge(y, nov, 'lv', s)).toBe(out));
+  it('counts from the season, not New Year', () => {
+    expect(plantingAge(2025, new Date('2026-06-01'), 'lv', 'autumn')).toBe('< 1 gads');
+    expect(plantingAge(2025, new Date('2026-09-20'), 'lv', 'autumn')).toBe('1 gads');
+  });
+  it('labels', () => {
+    expect(plantingLabel(2023, 'autumn')).toBe('2023. g. rudens');
+    expect(plantingLabel(2023, 'spring', 'en')).toBe('spring 2023');
+    expect(plantingLabel(2023, null)).toBe('2023');
+  });
 });

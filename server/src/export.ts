@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import PDFDocument from 'pdfkit';
-import { durationMin, type Lang, type LogRecord } from '@spray/shared';
+import { durationMin, plantingLabel, type Lang, type LogRecord } from '@spray/shared';
 
 const require = createRequire(import.meta.url);
 const FONT = require.resolve('dejavu-fonts-ttf/ttf/DejaVuSans.ttf');
@@ -52,7 +52,7 @@ function perTankText(r: LogRecord): string {
 /** "2021 · 4 rindas · 40000 augi/ha" */
 function fieldInfoText(r: LogRecord): string {
   const f = r.field;
-  return [f.plantingYear ?? null, f.rows ? `${f.rows} rows` : null, f.plantsPerHa ? `${f.plantsPerHa}/ha` : null].filter(Boolean).join(' · ');
+  return [plantingLabel(f.plantingYear, f.plantingSeason), f.rows ? `${f.rows} rows` : null, f.plantsPerHa ? `${f.plantsPerHa}/ha` : null].filter(Boolean).join(' · ');
 }
 
 function csvCell(v: unknown): string {

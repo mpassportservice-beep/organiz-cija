@@ -122,16 +122,21 @@ export function App({ session }: { session: Session }) {
       </main>
       {locOpen && <LocationPicker ctx={ctx} onClose={() => setLocOpen(false)} onSave={(l) => void saveLocation(l)} />}
       {toast && <div className="fixed inset-x-3 bottom-24 z-40 mx-auto max-w-md rounded-xl bg-neutral-950 px-4 py-3 text-center font-bold text-white" role="status">{toast}</div>}
-      <nav className="safe-b sticky bottom-0 z-20 grid grid-cols-4 border-t-2 border-neutral-900 bg-white">
-        {tabs.map((x) => {
-          const active = tab === x.id || (x.id === 'now' && tab === 'precheck');
-          return (
-            <button key={x.id} onClick={() => setTab(x.id)} aria-current={active ? 'page' : undefined}
-              className={`flex min-h-14 flex-col items-center justify-center text-xs font-bold ${active ? 'bg-neutral-950 text-white' : ''}`}>
-              <span className="text-lg leading-none" aria-hidden>{x.icon}</span>{x.label}
-            </button>
-          );
-        })}
+      {/* Space so the last content is not hidden under the floating bar. */}
+      <div aria-hidden className="h-[calc(5rem+env(safe-area-inset-bottom))] shrink-0" />
+      {/* Fixed to the viewport, so at any page zoom it reaches both screen edges. */}
+      <nav className="glass-bar safe-b fixed inset-x-0 bottom-0 z-20">
+        <div className="grid w-full grid-cols-4 gap-1 px-2 pb-1.5 pt-1.5">
+          {tabs.map((x) => {
+            const active = tab === x.id || (x.id === 'now' && tab === 'precheck');
+            return (
+              <button key={x.id} onClick={() => setTab(x.id)} aria-current={active ? 'page' : undefined}
+                className={`glass-tab flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-2xl text-xs font-bold ${active ? 'glass-tab-on' : 'text-neutral-950'}`}>
+                <span className="text-lg leading-none" aria-hidden>{x.icon}</span>{x.label}
+              </button>
+            );
+          })}
+        </div>
       </nav>
     </div>
   );

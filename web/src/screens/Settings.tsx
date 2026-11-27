@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { DEMO } from '../demo';
-import { CROPS, DEFAULT_THRESHOLDS, isActive, plantingAge, THRESHOLD_GROUPS, type Field, type FieldGroup, type Thresholds } from '@spray/shared';
+import { CROPS, DEFAULT_THRESHOLDS, isActive, plantingAge, plantingLabel, type PlantingSeason, THRESHOLD_GROUPS, type Field, type FieldGroup, type Thresholds } from '@spray/shared';
 import type { Ctx } from '../App';
 import { AccountCard, FarmCard } from './Farm';
 import { logTitle } from './Log';
@@ -38,10 +38,22 @@ function FieldEditor({ ctx, f }: { ctx: Ctx; f: Field }) {
           </select>
         </Labeled>
       </div>
-      <Labeled label={t('plantingYear')} hint={plantingAge(f.plantingYear, new Date(), lang) ?? undefined}>
-        <select className={inputCls} value={f.plantingYear ?? ''} onChange={(e) => set({ plantingYear: e.target.value === '' ? null : Number(e.target.value) })}>
+      <Labeled label={t('plantingYear')} hint={plantingAge(f.plantingYear, new Date(), lang, f.plantingSeason) ?? undefined}>
+        <select className={inputCls} value={f.plantingYear ? `${f.plantingYear}-${f.plantingSeason ?? ''}` : ''}
+          onChange={(e) => {
+            const [y, season] = e.target.value.split('-');
+            set(y ? { plantingYear: Number(y), plantingSeason: (season || null) as PlantingSeason | null } : { plantingYear: null, plantingSeason: null });
+          }}>
           <option value="">{t('choose')}</option>
-          {YEARS.map((y) => <option key={y} value={y}>{y} · {plantingAge(y, new Date(), lang)}</option>)}
+          {/* a year saved before seasons existed stays selectable as it was */}
+          {f.plantingYear && !f.plantingSeason && <option value={`${f.plantingYear}-`}>{f.plantingYear}</option>}
+          {YEARS.map((y) => (
+            <optgroup key={y} label={String(y)}>
+              {(['autumn', 'spring'] as const).map((se) => (
+                <option key={se} value={`${y}-${se}`}>{plantingLabel(y, se, lang)} · {plantingAge(y, new Date(), lang, se)}</option>
+              ))}
+            </optgroup>
+          ))}
         </select>
       </Labeled>
       {state.fields.length > 1 && (
@@ -221,7 +233,7 @@ export function Settings({ ctx }: { ctx: Ctx }) {
                 {f.name}{f.areaHa ? ` · ${fmtHa(f.areaHa, lang)} ha` : ''}{f.cropId ? ` · ${CROPS.find((c) => c.id === f.cropId)?.[lang]}` : ''}
                 {(f.plantingYear || f.rows || f.plantsPerHa) ? (
                   <span className="block text-sm font-semibold text-neutral-700">
-                    {[f.plantingYear ? `${f.plantingYear} (${plantingAge(f.plantingYear, new Date(), lang)})` : null, f.rows ? `${f.rows} ${t('rowsShort')}` : null,
+                    {[f.plantingYear ? `${plantingLabel(f.plantingYear, f.plantingSeason, lang)} (${plantingAge(f.plantingYear, new Date(), lang, f.plantingSeason)})` : null, f.rows ? `${f.rows} ${t('rowsShort')}` : null,
                       f.plantsPerHa ? `${f.plantsPerHa.toLocaleString('lv-LV')} ${t('plantsShort')}` : null].filter(Boolean).join(' · ')}
                   </span>
                 ) : null}
